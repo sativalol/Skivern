@@ -5,3 +5,4 @@ bots.db
 scratch/
 docs/
 todo.txt
+.gitignore
