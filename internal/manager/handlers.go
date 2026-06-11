@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -9,6 +10,18 @@ import (
 	"skyvern/internal/moderation"
 	"skyvern/internal/storage"
 )
+
+func safeGo(fn func()) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("PANIC RECOVER %v\n%s\n", r, debug.Stack())
+			}
+		}()
+		fn()
+	}()
+}
+
 
 func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 	sess.AddHandler(func(s *discordgo.Session, msg *discordgo.MessageCreate) {
@@ -281,10 +294,10 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 		if e.Member == nil || e.Member.User == nil {
 			return
 		}
-		go m.LogMemberJoin(s, e)
-		go m.TrackAntiraidJoin(s, e.GuildID, e.Member)
+		safeGo(func() { m.LogMemberJoin(s, e) })
+		safeGo(func() { m.TrackAntiraidJoin(s, e.GuildID, e.Member) })
 		if e.Member.User.Bot {
-			go m.TrackAntinuke(s, e.GuildID, e.Member.User.ID, discordgo.AuditLogActionBotAdd)
+			safeGo(func() { m.TrackAntinuke(s, e.GuildID, e.Member.User.ID, discordgo.AuditLogActionBotAdd) })
 		}
 		entries, err := m.db.ListStickyRoles(e.GuildID)
 		if err == nil {
@@ -310,7 +323,7 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 		if u.Member == nil || u.Member.User == nil {
 			return
 		}
-		go m.LogMemberUpdate(s, u)
+		safeGo(func() { m.LogMemberUpdate(s, u) })
 		if locked, err := m.db.GetNicklock(u.GuildID, u.Member.User.ID); err == nil {
 			if u.Member.Nick != locked {
 				_ = s.GuildMemberNickname(u.GuildID, u.Member.User.ID, locked)
@@ -323,7 +336,7 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 			if isNew && time.Since(*u.Member.PremiumSince) < 2*time.Minute {
 				m.lastBoostLogged[u.GuildID+":"+u.Member.User.ID] = time.Now()
 				m.boostMu.Unlock()
-				go m.triggerBoostMsg(s, u.GuildID, u.Member)
+				safeGo(func() { m.triggerBoostMsg(s, u.GuildID, u.Member) })
 			} else {
 				m.boostMu.Unlock()
 			}
@@ -331,20 +344,29 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildBanAdd) {
-		go m.LogMemberBan(s, e)
-		go moderation.ProcAudit(s, m.db, e.GuildID, e.User.ID, discordgo.AuditLogActionMemberBanAdd)
-		go m.TrackAntinuke(s, e.GuildID, e.User.ID, discordgo.AuditLogActionMemberBanAdd)
+		if e.User == nil {
+			return
+		}
+		safeGo(func() { m.LogMemberBan(s, e) })
+		safeGo(func() { moderation.ProcAudit(s, m.db, e.GuildID, e.User.ID, discordgo.AuditLogActionMemberBanAdd) })
+		safeGo(func() { m.TrackAntinuke(s, e.GuildID, e.User.ID, discordgo.AuditLogActionMemberBanAdd) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildBanRemove) {
-		go m.LogMemberUnban(s, e)
-		go moderation.ProcAudit(s, m.db, e.GuildID, e.User.ID, discordgo.AuditLogActionMemberBanRemove)
+		if e.User == nil {
+			return
+		}
+		safeGo(func() { m.LogMemberUnban(s, e) })
+		safeGo(func() { moderation.ProcAudit(s, m.db, e.GuildID, e.User.ID, discordgo.AuditLogActionMemberBanRemove) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildMemberRemove) {
-		go m.LogMemberLeave(s, e)
-		go moderation.ProcAudit(s, m.db, e.GuildID, e.Member.User.ID, discordgo.AuditLogActionMemberKick)
-		go m.TrackAntinuke(s, e.GuildID, e.Member.User.ID, discordgo.AuditLogActionMemberKick)
+		if e.Member == nil || e.Member.User == nil {
+			return
+		}
+		safeGo(func() { m.LogMemberLeave(s, e) })
+		safeGo(func() { moderation.ProcAudit(s, m.db, e.GuildID, e.Member.User.ID, discordgo.AuditLogActionMemberKick) })
+		safeGo(func() { m.TrackAntinuke(s, e.GuildID, e.Member.User.ID, discordgo.AuditLogActionMemberKick) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.MessageDelete) {
@@ -425,23 +447,32 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildRoleCreate) {
-		go m.LogRoleCreate(s, e)
-		go m.TrackAntinuke(s, e.GuildID, e.Role.ID, discordgo.AuditLogActionRoleCreate)
+		if e.Role == nil {
+			return
+		}
+		safeGo(func() { m.LogRoleCreate(s, e) })
+		safeGo(func() { m.TrackAntinuke(s, e.GuildID, e.Role.ID, discordgo.AuditLogActionRoleCreate) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildRoleDelete) {
-		go m.LogRoleDelete(s, e)
-		go m.TrackAntinuke(s, e.GuildID, e.RoleID, discordgo.AuditLogActionRoleDelete)
+		safeGo(func() { m.LogRoleDelete(s, e) })
+		safeGo(func() { m.TrackAntinuke(s, e.GuildID, e.RoleID, discordgo.AuditLogActionRoleDelete) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.ChannelCreate) {
-		go m.LogChannelCreate(s, e)
-		go m.TrackAntinuke(s, e.GuildID, e.Channel.ID, discordgo.AuditLogActionChannelCreate)
+		if e.Channel == nil {
+			return
+		}
+		safeGo(func() { m.LogChannelCreate(s, e) })
+		safeGo(func() { m.TrackAntinuke(s, e.GuildID, e.Channel.ID, discordgo.AuditLogActionChannelCreate) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.ChannelDelete) {
-		go m.LogChannelDelete(s, e)
-		go m.TrackAntinuke(s, e.GuildID, e.Channel.ID, discordgo.AuditLogActionChannelDelete)
+		if e.Channel == nil {
+			return
+		}
+		safeGo(func() { m.LogChannelDelete(s, e) })
+		safeGo(func() { m.TrackAntinuke(s, e.GuildID, e.Channel.ID, discordgo.AuditLogActionChannelDelete) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.MessageDeleteBulk) {
