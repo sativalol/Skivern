@@ -108,9 +108,6 @@ func resolveRPTarget(s *discordgo.Session, gid, query string) string {
 	if q == "" {
 		return ""
 	}
-	if ch, err := moderation.ResolveChannel(s, gid, q); err == nil && ch != nil {
-		return "<#" + ch.ID + ">"
-	}
 	if m, err := moderation.ResolveMember(s, gid, q); err == nil && m != nil {
 		return "<@" + m.User.ID + ">"
 	}

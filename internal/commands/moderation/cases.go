@@ -245,7 +245,11 @@ var Lockdown = &manager.Command{
 			if strings.ToLower(ctx.Args[0]) == "all" {
 				lockAll = true
 			} else {
-				target = strings.Trim(ctx.Args[0], "<#>")
+				if ch, err := moderation.ResolveChannel(ctx.Session, gid, ctx.Args[0]); err == nil && ch != nil {
+					target = ch.ID
+				} else {
+					target = strings.Trim(ctx.Args[0], "<#>")
+				}
 			}
 		}
 
@@ -292,7 +296,11 @@ var Unlock = &manager.Command{
 			if strings.ToLower(ctx.Args[0]) == "all" {
 				unlockAll = true
 			} else {
-				target = strings.Trim(ctx.Args[0], "<#>")
+				if ch, err := moderation.ResolveChannel(ctx.Session, gid, ctx.Args[0]); err == nil && ch != nil {
+					target = ch.ID
+				} else {
+					target = strings.Trim(ctx.Args[0], "<#>")
+				}
 			}
 		}
 

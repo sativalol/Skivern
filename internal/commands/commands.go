@@ -84,6 +84,7 @@ var Registry = []*manager.Command{
 	utility.ClearSnipe,
 	utility.Hide,
 	utility.Unhide,
+	utility.ChannelCmd,
 	utility.MoveAll,
 	utility.AFK,
 	utility.Autoreact,
