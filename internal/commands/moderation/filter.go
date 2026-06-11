@@ -12,12 +12,43 @@ import (
 func init() {
 	manager.RegisterHelp("filter", []manager.HelpPage{
 		{
-			Command:     "Content Filter",
-			Syntax:      ".filter | .filter enable | .filter disable | .filter add <word> | .filter remove <word> | .filter allow <word> | .filter unallow <word> | .filter regex add <pattern> | .filter regex remove <pattern> | .filter bypass <yes|no> | .filter whitelist <add|remove|list> <target> | .filter list",
-			Description: "Configure word and regex message content filters.",
+			Command:     "Filter Settings & Status",
+			Syntax:      ".filter [list|settings]",
+			Description: "View active configuration, status, wordlists, and whitelists.",
+		},
+		{
+			Command:     "Filter Toggle",
+			Syntax:      ".filter <enable|disable>",
+			Description: "Turn the content filter engine on or off.",
+		},
+		{
+			Command:     "Add/Remove Blocked Words",
+			Syntax:      ".filter <add|remove> <word>",
+			Description: "Manage words that trigger message deletion.",
+		},
+		{
+			Command:     "Allowed Exceptions",
+			Syntax:      ".filter <allow|unallow> <word>",
+			Description: "Manage words explicitly permitted to bypass the blocklist.",
+		},
+		{
+			Command:     "Regex Filters",
+			Syntax:      ".filter regex <add|remove> <pattern>",
+			Description: "Manage custom regular expression matching filters.",
+		},
+		{
+			Command:     "Whitelist Entities",
+			Syntax:      ".filter whitelist <add|remove|list> [target]",
+			Description: "Manage channels, roles, or users exempt from filtering.",
+		},
+		{
+			Command:     "Bypass Settings",
+			Syntax:      ".filter bypass <yes|no>",
+			Description: "Toggle bypass exceptions for members with server management permissions.",
 		},
 	})
 }
+
 
 var Filter = &manager.Command{
 	Trigger:     "filter",
@@ -32,34 +63,24 @@ var Filter = &manager.Command{
 		cfg, _ := ctx.Mgr.GetFilterCfg(ctx.GuildID())
 
 		if len(ctx.Args) == 0 {
-			status := "Disabled"
-			if cfg.Enabled {
-				status = "Enabled"
-			}
-			var wList []string
-			for _, id := range cfg.Whitelist {
-				wList = append(wList, fmt.Sprintf("<@&%s> / <@%s> / <#%s>", id, id, id))
-			}
-			wlStr := strings.Join(wList, ", ")
-			if wlStr == "" {
-				wlStr = "*None*"
-			}
-			return ctx.Reply(fmt.Sprintf("[*] **Filter Settings**:\n- Status: `%s`\n- Blocked Words: `%d` active\n- Allowed Words: `%d` active\n- Custom Regexes: `%d` active\n- Perm Bypass: `%t`\n- Whitelist: %s", status, len(cfg.BlockedWords), len(cfg.AllowedWords), len(cfg.Regexes), cfg.BypassPerms, wlStr))
+			return ctx.Reply("[*] Do .filter help for help.")
 		}
 
 		sub := strings.ToLower(ctx.Args[0])
 		switch sub {
-		case "enable":
+		case "help":
+			return ctx.SendHelp("filter")
+		case "enable", "on", "activate":
 			cfg.Enabled = true
 			_ = ctx.Mgr.SaveFilterCfg(ctx.GuildID(), cfg)
 			return ctx.Reply("[+] Content filter enabled.")
-		case "disable":
+		case "disable", "off", "deactivate":
 			cfg.Enabled = false
 			_ = ctx.Mgr.SaveFilterCfg(ctx.GuildID(), cfg)
 			return ctx.Reply("[-] Content filter disabled.")
-		case "bypass":
+		case "bypass", "bypassperms", "ignoreperms":
 			if len(ctx.Args) < 2 {
-				return ctx.Reply("[!] Usage: .filter bypass <yes|no>")
+				return ctx.SendHelp("filter")
 			}
 			val := strings.ToLower(ctx.Args[1])
 			if val != "yes" && val != "no" && val != "true" && val != "false" {
@@ -68,9 +89,9 @@ var Filter = &manager.Command{
 			cfg.BypassPerms = (val == "yes" || val == "true")
 			_ = ctx.Mgr.SaveFilterCfg(ctx.GuildID(), cfg)
 			return ctx.Reply(fmt.Sprintf("[+] Permission bypass updated to `%t`.", cfg.BypassPerms))
-		case "add":
+		case "add", "block", "blacklist", "banword":
 			if len(ctx.Args) < 2 {
-				return ctx.Reply("[!] Usage: .filter add <word>")
+				return ctx.SendHelp("filter")
 			}
 			word := strings.Join(ctx.Args[1:], " ")
 			for _, w := range cfg.BlockedWords {
@@ -81,9 +102,9 @@ var Filter = &manager.Command{
 			cfg.BlockedWords = append(cfg.BlockedWords, word)
 			_ = ctx.Mgr.SaveFilterCfg(ctx.GuildID(), cfg)
 			return ctx.Reply(fmt.Sprintf("[+] Added `%s` to blocked words.", word))
-		case "remove":
+		case "remove", "unblock", "delete", "del":
 			if len(ctx.Args) < 2 {
-				return ctx.Reply("[!] Usage: .filter remove <word>")
+				return ctx.SendHelp("filter")
 			}
 			word := strings.Join(ctx.Args[1:], " ")
 			idx := -1
@@ -99,9 +120,9 @@ var Filter = &manager.Command{
 			cfg.BlockedWords = append(cfg.BlockedWords[:idx], cfg.BlockedWords[idx+1:]...)
 			_ = ctx.Mgr.SaveFilterCfg(ctx.GuildID(), cfg)
 			return ctx.Reply(fmt.Sprintf("[-] Removed `%s` from blocked words.", word))
-		case "allow":
+		case "allow", "whitelistword", "except":
 			if len(ctx.Args) < 2 {
-				return ctx.Reply("[!] Usage: .filter allow <word>")
+				return ctx.SendHelp("filter")
 			}
 			word := strings.Join(ctx.Args[1:], " ")
 			for _, w := range cfg.AllowedWords {
@@ -112,9 +133,9 @@ var Filter = &manager.Command{
 			cfg.AllowedWords = append(cfg.AllowedWords, word)
 			_ = ctx.Mgr.SaveFilterCfg(ctx.GuildID(), cfg)
 			return ctx.Reply(fmt.Sprintf("[+] Added `%s` to allowed exceptions.", word))
-		case "unallow":
+		case "unallow", "unexcept":
 			if len(ctx.Args) < 2 {
-				return ctx.Reply("[!] Usage: .filter unallow <word>")
+				return ctx.SendHelp("filter")
 			}
 			word := strings.Join(ctx.Args[1:], " ")
 			idx := -1
@@ -132,7 +153,7 @@ var Filter = &manager.Command{
 			return ctx.Reply(fmt.Sprintf("[-] Removed `%s` from allowed exceptions.", word))
 		case "regex":
 			if len(ctx.Args) < 3 {
-				return ctx.Reply("[!] Usage: .filter regex <add|remove> <pattern>")
+				return ctx.SendHelp("filter")
 			}
 			op := strings.ToLower(ctx.Args[1])
 			pattern := strings.Join(ctx.Args[2:], " ")
@@ -166,7 +187,7 @@ var Filter = &manager.Command{
 			return ctx.Reply("[!] Operation must be add or remove.")
 		case "whitelist":
 			if len(ctx.Args) < 2 {
-				return ctx.Reply("[!] Usage: .filter whitelist <add|remove|list> [target]")
+				return ctx.SendHelp("filter")
 			}
 			op := strings.ToLower(ctx.Args[1])
 			if op == "list" {
@@ -180,7 +201,7 @@ var Filter = &manager.Command{
 				return ctx.Reply(fmt.Sprintf("[*] Whitelisted entities:\n%s", strings.Join(wl, "\n")))
 			}
 			if len(ctx.Args) < 3 {
-				return ctx.Reply("[!] Target required.")
+				return ctx.SendHelp("filter")
 			}
 			target := ctx.Args[2]
 			targetID := ""
@@ -232,6 +253,20 @@ var Filter = &manager.Command{
 				rxList = fmt.Sprintf("`%s`", strings.Join(cfg.Regexes, "`, `"))
 			}
 			return ctx.Reply(fmt.Sprintf("[*] **Content Filter Configuration**:\n\n**Blocked Words:**\n%s\n\n**Allowed Words:**\n%s\n\n**Blocked Regexes:**\n%s", bwList, awList, rxList))
+		case "settings", "status", "show", "view":
+			status := "Disabled"
+			if cfg.Enabled {
+				status = "Enabled"
+			}
+			var wList []string
+			for _, id := range cfg.Whitelist {
+				wList = append(wList, fmt.Sprintf("<@&%s> / <@%s> / <#%s>", id, id, id))
+			}
+			wlStr := strings.Join(wList, ", ")
+			if wlStr == "" {
+				wlStr = "*None*"
+			}
+			return ctx.Reply(fmt.Sprintf("[*] **Filter Settings**:\n- Status: `%s`\n- Blocked Words: `%d` active\n- Allowed Words: `%d` active\n- Custom Regexes: `%d` active\n- Perm Bypass: `%t`\n- Whitelist: %s", status, len(cfg.BlockedWords), len(cfg.AllowedWords), len(cfg.Regexes), cfg.BypassPerms, wlStr))
 		default:
 			return ctx.SendHelp("filter")
 		}

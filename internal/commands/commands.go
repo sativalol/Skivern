@@ -1,10 +1,10 @@
 package commands
 
 import (
+	"skyvern/internal/commands/fun"
 	"skyvern/internal/commands/general"
 	"skyvern/internal/commands/moderation"
 	"skyvern/internal/commands/utility"
-	"skyvern/internal/commands/fun"
 	"skyvern/internal/manager"
 
 	"github.com/bwmarrin/discordgo"
@@ -70,6 +70,7 @@ var Registry = []*manager.Command{
 	moderation.Roles,
 	moderation.Role,
 	moderation.Antinuke,
+	moderation.Antiraid,
 	moderation.Nuke,
 	moderation.Prefix,
 	moderation.Slowmode,
@@ -143,6 +144,7 @@ var Registry = []*manager.Command{
 	fun.Juul,
 	fun.Yart,
 	fun.Weed,
+	fun.StockCmd,
 	fun.Rate,
 	fun.Ship,
 }

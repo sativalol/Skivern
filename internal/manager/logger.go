@@ -155,7 +155,46 @@ func (m *Manager) SendAuditLog(s *discordgo.Session, guildID, category string, e
 				Text: "Audit Logging System",
 			}
 		}
-		_, _ = s.ChannelMessageSendEmbed(sub.ChannelID, logEmbed)
+		m.sendWebhookOrEmbed(s, sub.ChannelID, logEmbed)
+	}
+}
+
+func (m *Manager) sendWebhookOrEmbed(s *discordgo.Session, channelID string, embed *discordgo.MessageEmbed) {
+	m.whMu.RLock()
+	wh, ok := m.whs[channelID]
+	m.whMu.RUnlock()
+
+	if !ok {
+		whs, err := s.ChannelWebhooks(channelID)
+		if err == nil {
+			for _, w := range whs {
+				if w.Name == "Skyvern Logger" {
+					wh = w
+					break
+				}
+			}
+		}
+		if wh == nil {
+			wh, err = s.WebhookCreate(channelID, "Skyvern Logger", "")
+			if err != nil {
+				_, _ = s.ChannelMessageSendEmbed(channelID, embed)
+				return
+			}
+		}
+		m.whMu.Lock()
+		m.whs[channelID] = wh
+		m.whMu.Unlock()
+	}
+
+	_, err := s.WebhookExecute(wh.ID, wh.Token, false, &discordgo.WebhookParams{
+		Embeds: []*discordgo.MessageEmbed{embed},
+	})
+	if err != nil {
+		m.whMu.Lock()
+		delete(m.whs, channelID)
+		m.whMu.Unlock()
+
+		_, _ = s.ChannelMessageSendEmbed(channelID, embed)
 	}
 }
 

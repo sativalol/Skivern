@@ -11,7 +11,6 @@ import (
 	_ "skyvern/internal/plugins/fun"
 	"skyvern/internal/storage"
 	"skyvern/pkg/tui"
-	"strings"
 	"time"
 )
 
@@ -29,12 +28,12 @@ func main() {
 	}()
 
 	if b, err := os.ReadFile(config.ResolvePath("ascii")); err == nil {
-		fmt.Print(shrink(string(b), 2))
+		fmt.Print(tui.Shrink(string(b), 2))
 	} else {
 		fmt.Println(tui.Logo)
 	}
 	fmt.Println("  Skyvern | Version 0.1.0-alpha")
-	fmt.Println("  Loading configurations...")
+	fmt.Println("  Loading cfgs...")
 
 	db, err := storage.Open(config.ResolvePath("bots.db"))
 	if err != nil {
@@ -83,54 +82,3 @@ func setupLogger() *os.File {
 	return f
 }
 
-func shrink(art string, factor int) string {
-	lns := strings.Split(art, "\n")
-	if len(lns) == 0 {
-		return ""
-	}
-	start := 0
-	for start < len(lns) && strings.TrimSpace(lns[start]) == "" {
-		start++
-	}
-	end := len(lns)
-	for end > start && strings.TrimSpace(lns[end-1]) == "" {
-		end--
-	}
-	lns = lns[start:end]
-	if len(lns) == 0 {
-		return ""
-	}
-	min := -1
-	for _, l := range lns {
-		if strings.TrimSpace(l) == "" {
-			continue
-		}
-		n := 0
-		for _, r := range l {
-			if r == ' ' || r == '\t' {
-				n++
-			} else {
-				break
-			}
-		}
-		if min == -1 || n < min {
-			min = n
-		}
-	}
-	for i, l := range lns {
-		if len(l) > min {
-			lns[i] = l[min:]
-		} else {
-			lns[i] = ""
-		}
-	}
-	var sb strings.Builder
-	for i := 0; i < len(lns); i += factor {
-		l := lns[i]
-		for j := 0; j < len(l); j += factor {
-			sb.WriteByte(l[j])
-		}
-		sb.WriteByte('\n')
-	}
-	return sb.String()
-}

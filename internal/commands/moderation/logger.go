@@ -33,7 +33,7 @@ func init() {
 		{
 			Command:     "Audit Logging",
 			Syntax:      ".log add <#channel> <event> | .log remove <#channel> <event> | .log color <#channel> <event> <hex> | .log color list <#channel> | .log ignore <@member|#channel> | .log ignore list",
-			Description: "Configure audit logging. Events: messages, members, roles, channels, invites, emojis, voice, server, all.",
+			Description: "Configure audit logging (messages, members, roles, channels, invites, emojis, voice, server, all).",
 		},
 	})
 }

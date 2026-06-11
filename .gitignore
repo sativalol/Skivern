@@ -27,6 +27,8 @@ temp/
 *.swp
 *.swo
 *~
+/scratch
+tui_config.json
 
 *.json
 tests/

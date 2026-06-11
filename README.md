@@ -14,13 +14,22 @@ A multi-instance Discord bot runner and moderation tool built in Go, managed dir
 
 ### Build and Run
 
-```powershell
+You can build the executable directly, or use our compiler script:
+
+#### Interactive Builder (Recommended)
+```bash
+# Run the interactive compiler
+go run build.go
+```
+This prints a menu to let you choose your target platform (Windows, macOS, Linux, Android) and automatically builds the binary with correct env configuration.
+
+#### Manual Build (Current Host)
+```bash
 # Build the executable
 go build -o skyvern.exe main.go
 
 # Launch the TUI
-.\skyvern.exe
-
+./skyvern.exe
 ```
 
 ---
@@ -62,3 +71,20 @@ Saves every event (message updates/deletions, member changes, role updates, voic
 * **Blocked Channels** – channel IDs to ignore.
 * **Blocked Users** – user IDs to ignore.
 * **Blocked Events** – Specific categories to drop (`messages`, `members`, `roles`, `channels`, `invites`, `emojis`, `voice`, `server`).
+
+---
+
+## Plugins
+
+Skyvern uses an in-tree plugin system to keep the manager clean. Plugins are given direct access to the database and session manager, meaning they can register commands, attach custom event handlers, or spin up workers.
+
+### How to Add a Plugin
+
+1. Create a new package under `internal/plugins/` (e.g., `internal/plugins/economy/`).
+2. Implement the `plugins.Plugin` interface.
+3. Call `plugins.Register()` inside your package's `init()` function.
+4. Import the package anonymously in `main.go` so it compiles into the binary:
+   ```go
+   import _ "skyvern/internal/plugins/economy"
+   ```
+5. Rebuild the bot.
