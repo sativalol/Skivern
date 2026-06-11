@@ -32,7 +32,6 @@ go build -o skyvern.exe main.go
 ./skyvern.exe
 ```
 
-If the terminal session disconnects or standard input closes (e.g., computer sleep or lock screen), the TUI will gracefully exit while keeping the active bot instances running in the background. Press `Ctrl+C` to terminate the runner process.
 
 ---
 
