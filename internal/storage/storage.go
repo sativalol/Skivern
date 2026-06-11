@@ -58,6 +58,7 @@ var (
 	bktAntilink     = []byte("AntilinkCfg")
 	bktAntinukeCfg  = []byte("AntinukeCfg")
 	bktAntiraidCfg  = []byte("AntiraidCfg")
+	bktTouches      = []byte("Touches")
 
 	keyGlobal = []byte("cfg")
 )
@@ -97,7 +98,7 @@ func Open(path string) (*DB, error) {
 			bktSchedules, bktStarboardCfg, bktStarboardMsg, bktTags,
 			bktTempVoiceCfg, bktTempVoiceChan, bktVanityCfg, bktVouches,
 			bktLoggerSubs, bktLoggerIgnores, bktAntispam, bktFilters, bktPalantirCfg, bktAntilink,
-			bktAntinukeCfg, bktAntiraidCfg,
+			bktAntinukeCfg, bktAntiraidCfg, bktTouches,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(name); err != nil {
 				return err

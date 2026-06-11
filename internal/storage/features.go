@@ -762,3 +762,83 @@ func (d *DB) DeletePrefix(gid string) error {
 		return tx.Bucket(bktPrefixes).Delete([]byte(gid))
 	})
 }
+
+type TouchRecord struct {
+	GuildID string `json:"guild_id"`
+	UserID  string `json:"user_id"`
+	Sent    int    `json:"sent"`
+	Recv    int    `json:"recv"`
+}
+
+func (d *DB) GetTouch(gid, uid string) (TouchRecord, error) {
+	var tr TouchRecord
+	err := d.b.View(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(bktTouches)
+		v := bkt.Get([]byte(gid + ":" + uid))
+		if v == nil {
+			tr = TouchRecord{GuildID: gid, UserID: uid}
+			return nil
+		}
+		return json.Unmarshal(v, &tr)
+	})
+	return tr, err
+}
+
+func (d *DB) RecordTouch(gid, sender, receiver string) (TouchRecord, TouchRecord, error) {
+	var sRec, rRec TouchRecord
+	err := d.b.Update(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(bktTouches)
+		
+		sv := bkt.Get([]byte(gid + ":" + sender))
+		if sv != nil {
+			_ = json.Unmarshal(sv, &sRec)
+		} else {
+			sRec = TouchRecord{GuildID: gid, UserID: sender}
+		}
+		sRec.Sent++
+		
+		if sender != receiver {
+			rv := bkt.Get([]byte(gid + ":" + receiver))
+			if rv != nil {
+				_ = json.Unmarshal(rv, &rRec)
+			} else {
+				rRec = TouchRecord{GuildID: gid, UserID: receiver}
+			}
+			rRec.Recv++
+		} else {
+			sRec.Recv++
+			rRec = sRec
+		}
+
+		sBytes, _ := json.Marshal(sRec)
+		if err := bkt.Put([]byte(gid+":"+sender), sBytes); err != nil {
+			return err
+		}
+
+		if sender != receiver {
+			rBytes, _ := json.Marshal(rRec)
+			if err := bkt.Put([]byte(gid+":"+receiver), rBytes); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return sRec, rRec, err
+}
+
+func (d *DB) ListTouches(gid string) ([]TouchRecord, error) {
+	var out []TouchRecord
+	err := d.b.View(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(bktTouches)
+		prefix := []byte(gid + ":")
+		c := bkt.Cursor()
+		for k, v := c.Seek(prefix); k != nil && strings.HasPrefix(string(k), string(prefix)); k, v = c.Next() {
+			var tr TouchRecord
+			if err := json.Unmarshal(v, &tr); err == nil {
+				out = append(out, tr)
+			}
+		}
+		return nil
+	})
+	return out, err
+}

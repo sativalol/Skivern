@@ -172,3 +172,7 @@ func Init(mgr *manager.Manager) {
 		general.HandleVouchComponent(s, i, mgr)
 	})
 }
+
+func init() {
+	Registry = append(Registry, fun.RoleplayCommands...)
+}
