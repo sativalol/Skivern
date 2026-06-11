@@ -1151,9 +1151,10 @@ func (m Model) renderSpotifyPanel(w, h int, th Theme) string {
 	}
 
 	txt := strings.Join(info, "\n")
+	availHeight := h - len(info) - 1
 
 	var logo []string
-	if w >= 38 {
+	if w >= 38 && availHeight >= 13 {
 		logo = []string{
 			"       ⢀⣠⣤⣤⣶⣶⣶⣶⣤⣤⣄⡀       ",
 			"    ⢀⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⡀    ",
@@ -1169,7 +1170,7 @@ func (m Model) renderSpotifyPanel(w, h int, th Theme) string {
 			"    ⠈⠛⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠛⠁    ",
 			"       ⠈⠙⠛⠛⠿⠿⠿⠿⠛⠛⠋⠁       ",
 		}
-	} else if w >= 22 {
+	} else if w >= 22 && availHeight >= 7 {
 		logo = []string{
 			"    ⢀⣤⣴⣶⣦⣤⡀    ",
 			"  ⣠⣾⣿⣿⣿⣿⣿⣿⣄  ",
@@ -1179,6 +1180,10 @@ func (m Model) renderSpotifyPanel(w, h int, th Theme) string {
 			"  ⠙⢿⣿⣿⣿⣿⡿⠋  ",
 			"    ⠈⠙⠛⠛⠋⠁    ",
 		}
+	}
+
+	if len(logo) == 0 {
+		return txt
 	}
 	sty := lipgloss.NewStyle().Foreground(lCol)
 	var lines []string

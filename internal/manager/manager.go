@@ -420,7 +420,7 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 		_ = m.db.IncrementUserMessages(msg.GuildID, msg.Author.ID)
 
 		prefix := state.cfg.Prefix
-		if gp, err := m.db.GetPrefix(msg.GuildID); err == nil && gp != "" {
+		if gp, err := m.GetPrefix(msg.GuildID); err == nil && gp != "" {
 			prefix = gp
 		}
 
@@ -1811,7 +1811,7 @@ func (m *Manager) checkAntispam(s *discordgo.Session, msg *discordgo.MessageCrea
 	if msg.GuildID == "" || msg.Author == nil {
 		return false
 	}
-	cfg, err := m.db.GetAntispamCfg(msg.GuildID)
+	cfg, err := m.GetAntispamCfg(msg.GuildID)
 	if err != nil || !cfg.Enabled || cfg.Limit <= 0 || cfg.Seconds <= 0 {
 		return false
 	}
@@ -1875,7 +1875,7 @@ func (m *Manager) checkFilter(s *discordgo.Session, msg *discordgo.MessageCreate
 	if msg.GuildID == "" || msg.Author == nil {
 		return false
 	}
-	cfg, err := m.db.GetFilterCfg(msg.GuildID)
+	cfg, err := m.GetFilterCfg(msg.GuildID)
 	if err != nil || !cfg.Enabled {
 		return false
 	}
@@ -2231,8 +2231,29 @@ func normalizeHomoglyphs(s string) string {
 	return sb.String()
 }
 
-var rxLink = regexp.MustCompile(`(?i)https?://[^\s/$.?#].[^\s]*`)
-var rxInvite = regexp.MustCompile(`(?i)(discord\.gg/|discord(app)?\.com/invite/)`)
+var rxLinkFull   = regexp.MustCompile(`(?i)(?:https?://|//)[^\s<>"']+`)
+var rxLinkWWW    = regexp.MustCompile(`(?i)\bwww\.[^\s<>"']+`)
+var rxLinkBare   = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+(?:com|net|org|io|gg|tv|me|app|dev|xyz|info|link|click|ly|to|sh|cc|tk|ml|ga|cf|gq|pw|online|site|biz|edu|gov|co|uk|us|ca|au|de|fr|ru|jp|cn|br|nl|se|no|fi|dk|pl|es|it|pt|be|ch|at|nz|sg|hk|in|kr|mx|ar|za|ng|pk|vn|th|id|eg|club|icu|top|vip|live|stream|news|store|shop|tech|art|pro|media)(?:/[^\s<>"']*)?`)
+var rxInvite     = regexp.MustCompile(`(?i)(?:discord\.gg/|discord(?:app)?\.com/invite/)[^\s<>"']+`)
+
+func extractLinks(content string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	add := func(matches []string) {
+		for _, m := range matches {
+			m = strings.TrimRight(m, ".,;:!?)>")
+			if m != "" && !seen[m] {
+				seen[m] = true
+				out = append(out, m)
+			}
+		}
+	}
+	add(rxLinkFull.FindAllString(content, -1))
+	add(rxInvite.FindAllString(content, -1))
+	add(rxLinkWWW.FindAllString(content, -1))
+	add(rxLinkBare.FindAllString(content, -1))
+	return out
+}
 
 func (m *Manager) checkAntilink(s *discordgo.Session, msg *discordgo.MessageCreate) bool {
 	if msg.GuildID == "" || msg.Author == nil {
@@ -2258,7 +2279,7 @@ func (m *Manager) checkAntilink(s *discordgo.Session, msg *discordgo.MessageCrea
 			}
 		}
 	}
-	links := rxLink.FindAllString(msg.Content, -1)
+	links := extractLinks(msg.Content)
 	if len(links) == 0 {
 		return false
 	}

@@ -79,7 +79,13 @@ type DB struct {
 }
 
 func Open(path string) (*DB, error) {
-	b, err := bolt.Open(path, 0600, nil)
+	opts := &bolt.Options{
+		Timeout:         1 * time.Second,
+		NoSync:          true,
+		FreelistType:    bolt.FreelistMapType,
+		InitialMmapSize: 1 << 30, // 1GB
+	}
+	b, err := bolt.Open(path, 0600, opts)
 	if err != nil {
 		return nil, fmt.Errorf("bolt open: %w", err)
 	}
@@ -200,7 +206,7 @@ func (d *DB) GetAnalytics(cid string) (Analytics, error) {
 }
 
 func (d *DB) SaveAnalytics(cid string, a Analytics) error {
-	return d.b.Update(func(tx *bolt.Tx) error {
+	return d.b.Batch(func(tx *bolt.Tx) error {
 		return putJSON(tx.Bucket(bktAnalytics), []byte(cid), a)
 	})
 }
@@ -410,7 +416,7 @@ func (d *DB) DeleteJailed(gid, uid string) error {
 }
 
 func (d *DB) SaveInvoke(gid, trigger, template string) error {
-	return d.b.Update(func(tx *bolt.Tx) error {
+	return d.b.Batch(func(tx *bolt.Tx) error {
 		gbkt, err := tx.Bucket(bktInvokes).CreateBucketIfNotExists([]byte(gid))
 		if err != nil {
 			return err
@@ -718,18 +724,17 @@ func (d *DB) ListDailyQuotes() (map[string]DailyCfg, error) {
 }
 
 func (d *DB) IncrementUserMessages(gid, uid string) error {
-	return d.b.Update(func(tx *bolt.Tx) error {
+	return d.b.Batch(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(bktUserMessages)
 		k := []byte(gid + ":" + uid)
-		var val int
 		v := bkt.Get(k)
+		n := 1
 		if v != nil {
-			if num, err := strconv.Atoi(string(v)); err == nil {
-				val = num
+			if i, err := strconv.Atoi(string(v)); err == nil {
+				n = i + 1
 			}
 		}
-		val++
-		return bkt.Put(k, []byte(strconv.Itoa(val)))
+		return bkt.Put(k, []byte(strconv.Itoa(n)))
 	})
 }
 

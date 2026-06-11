@@ -66,6 +66,7 @@ var Registry = []*manager.Command{
 	moderation.Log,
 	moderation.Antispam,
 	moderation.Filter,
+	moderation.Antilink,
 	moderation.Roles,
 	moderation.Role,
 	moderation.Antinuke,

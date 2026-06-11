@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	"skyvern/internal/commands"
 	"skyvern/internal/config"
 	"skyvern/internal/manager"
@@ -11,15 +12,28 @@ import (
 	"skyvern/internal/storage"
 	"skyvern/pkg/tui"
 	"strings"
+	"time"
 )
 
 func main() {
+	f := setupLogger()
+	defer f.Close()
+	defer func() {
+		if r := recover(); r != nil {
+			out := fmt.Sprintf("\n[PANIC] %v\n\n%s\n", r, debug.Stack())
+			_, _ = fmt.Fprint(f, out)
+			f.Close()
+			_ = os.Rename(config.ResolvePath("skyvern.log"), config.ResolvePath(fmt.Sprintf("crash_%s.log", time.Now().Format("2006-01-02_15-04-05"))))
+			panic(r)
+		}
+	}()
+
 	if b, err := os.ReadFile(config.ResolvePath("ascii")); err == nil {
 		fmt.Print(shrink(string(b), 2))
 	} else {
 		fmt.Println(tui.Logo)
 	}
-	fmt.Println("  Skyvern | Version 1.0.0")
+	fmt.Println("  Skyvern | Version 0.1.0-alpha")
 	fmt.Println("  Loading configurations...")
 
 	db, err := storage.Open(config.ResolvePath("bots.db"))
@@ -59,12 +73,21 @@ func main() {
 	}
 }
 
+func setupLogger() *os.File {
+	f, err := os.OpenFile(config.ResolvePath("skyvern.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return os.Stderr
+	}
+	_, _ = fmt.Fprintf(f, "started %s\n\n", time.Now().Format(time.RFC3339))
+	os.Stderr = f
+	return f
+}
+
 func shrink(art string, factor int) string {
 	lns := strings.Split(art, "\n")
 	if len(lns) == 0 {
 		return ""
 	}
-
 	start := 0
 	for start < len(lns) && strings.TrimSpace(lns[start]) == "" {
 		start++
@@ -74,11 +97,9 @@ func shrink(art string, factor int) string {
 		end--
 	}
 	lns = lns[start:end]
-
 	if len(lns) == 0 {
 		return ""
 	}
-
 	min := -1
 	for _, l := range lns {
 		if strings.TrimSpace(l) == "" {
@@ -96,7 +117,6 @@ func shrink(art string, factor int) string {
 			min = n
 		}
 	}
-
 	for i, l := range lns {
 		if len(l) > min {
 			lns[i] = l[min:]
@@ -104,7 +124,6 @@ func shrink(art string, factor int) string {
 			lns[i] = ""
 		}
 	}
-
 	var sb strings.Builder
 	for i := 0; i < len(lns); i += factor {
 		l := lns[i]
@@ -113,6 +132,5 @@ func shrink(art string, factor int) string {
 		}
 		sb.WriteByte('\n')
 	}
-
 	return sb.String()
 }
