@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -18,9 +17,7 @@ import (
 )
 
 func main() {
-	headless := flag.Bool("headless", false, "run bot in headless mode without TUI")
-	flag.Parse()
-
+	signal.Ignore(syscall.SIGHUP)
 	f := setupLogger()
 	defer f.Close()
 	defer func() {
@@ -33,17 +30,13 @@ func main() {
 		}
 	}()
 
-	if !*headless {
-		if b, err := os.ReadFile(config.ResolvePath("ascii")); err == nil {
-			fmt.Print(tui.Shrink(string(b), 2))
-		} else {
-			fmt.Println(tui.Logo)
-		}
-		fmt.Println("  Skyvern | Version 0.1.0-alpha")
-		fmt.Println("  Loading cfgs...")
+	if b, err := os.ReadFile(config.ResolvePath("ascii")); err == nil {
+		fmt.Print(tui.Shrink(string(b), 2))
 	} else {
-		fmt.Println("[*] Skyvern starting in headless mode...")
+		fmt.Println(tui.Logo)
 	}
+	fmt.Println("  Skyvern | Version 0.1.0-alpha")
+	fmt.Println("  Loading cfgs...")
 
 	db, err := storage.Open(config.ResolvePath("bots.db"))
 	if err != nil {
@@ -76,18 +69,18 @@ func main() {
 		}
 	}
 
-	if *headless {
-		fmt.Println("[+] Bot instances started. Press Ctrl+C to terminate.")
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-		<-sig
-		fmt.Println("[*] Shutting down headless runner...")
-	} else {
-		if err := tui.Run(db, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "tui error: %v\n", err)
-			os.Exit(1)
-		}
+	if err := tui.Run(db, mgr); err != nil {
+		fmt.Fprintf(os.Stderr, "tui exited: %v\n", err)
 	}
+
+	if !mgr.HasRunningBots() {
+		return
+	}
+
+	fmt.Println("\ntui closed but bots are running in background. ctrl+c to exit")
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
 }
 
 func setupLogger() *os.File {

@@ -50,10 +50,15 @@ func GetSpotifyTrack() string {
 	return res
 }
 
-func getEnumWindowsTrack() (string, bool) {
-	var tr string
-	var active bool
-	cb := syscall.NewCallback(func(hwnd uintptr, lparam uintptr) uintptr {
+var (
+	enumMu       sync.Mutex
+	enumTrack    string
+	enumActive   bool
+	enumCallback uintptr
+)
+
+func init() {
+	enumCallback = syscall.NewCallback(func(hwnd uintptr, lparam uintptr) uintptr {
 		var cName [256]uint16
 		_, _, _ = procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&cName[0])), 256)
 		cls := syscall.UTF16ToString(cName[:])
@@ -61,7 +66,7 @@ func getEnumWindowsTrack() (string, bool) {
 		isSp := cls == "SpotifyMainWindow"
 		isBr := cls == "Chrome_WidgetWin_1" || cls == "MozillaWindowClass" || cls == "ApplicationFrameWindow"
 		if isSp || isBr {
-			active = true
+			enumActive = true
 		}
 
 		var wTitle [512]uint16
@@ -72,9 +77,8 @@ func getEnumWindowsTrack() (string, bool) {
 		}
 
 		if isSp {
-			// ignore generic paused titles
 			if t != "Spotify" && t != "Spotify Free" && t != "Spotify Premium" {
-				tr = t
+				enumTrack = t
 				return 0
 			}
 		}
@@ -88,9 +92,9 @@ func getEnumWindowsTrack() (string, bool) {
 			if info != "" && info != "Spotify" && !strings.Contains(strings.ToLower(info), "web player") {
 				p := strings.Split(info, " - ")
 				if len(p) == 2 {
-					tr = p[1] + " - " + p[0]
+					enumTrack = p[1] + " - " + p[0]
 				} else {
-					tr = info
+					enumTrack = info
 				}
 				return 0
 			}
@@ -104,15 +108,22 @@ func getEnumWindowsTrack() (string, bool) {
 			}
 			p := strings.SplitN(info, " \u2022 ", 2)
 			if len(p) == 2 {
-				tr = strings.TrimSpace(p[1]) + " - " + strings.TrimSpace(p[0])
+				enumTrack = strings.TrimSpace(p[1]) + " - " + strings.TrimSpace(p[0])
 				return 0
 			}
 		}
 
 		return 1
 	})
-	_, _, _ = procEnumWindows.Call(cb, 0)
-	return tr, active
+}
+
+func getEnumWindowsTrack() (string, bool) {
+	enumMu.Lock()
+	defer enumMu.Unlock()
+	enumTrack = ""
+	enumActive = false
+	_, _, _ = procEnumWindows.Call(enumCallback, 0)
+	return enumTrack, enumActive
 }
 
 func getSMTC() string {

@@ -254,6 +254,18 @@ func (m *Manager) IsRunning(clientID string) bool {
 	return ok && s.running
 }
 
+func (m *Manager) HasRunningBots() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, v := range m.instances {
+		if v.running {
+			return true
+		}
+	}
+	return false
+}
+
+
 func (m *Manager) Stats(clientID string) storage.Analytics { return m.stats.get(clientID) }
 func (m *Manager) GlobalStats() storage.Analytics          { return m.stats.totals() }
 

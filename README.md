@@ -32,15 +32,7 @@ go build -o skyvern.exe main.go
 ./skyvern.exe
 ```
 
-#### Headless Mode (Overnight / Servers)
-If you lock your computer, let it go to sleep, or disconnect your terminal session, standard input (`os.Stdin`) will close. Bubble Tea (the TUI framework) will detect this EOF and shut down the program, closing your bots.
-
-To run the bot indefinitely in the background without launching the TUI, run the executable with the `-headless` flag:
-```bash
-./skyvern.exe -headless
-```
-This runs all enabled bot instances in a simple blocking runner that is immune to locked screens, sleep mode, and terminal disconnects. Use `Ctrl+C` to terminate the headless runner.
-
+If the terminal session disconnects or standard input closes (e.g., computer sleep or lock screen), the TUI will gracefully exit while keeping the active bot instances running in the background. Press `Ctrl+C` to terminate the runner process.
 
 ---
 
