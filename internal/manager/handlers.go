@@ -476,67 +476,67 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.MessageDeleteBulk) {
-		go m.LogMessageDeleteBulk(s, e)
+		safeGo(func() { m.LogMessageDeleteBulk(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.UserUpdate) {
-		go m.LogUserUpdate(s, e)
+		safeGo(func() { m.LogUserUpdate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildRoleUpdate) {
-		go m.LogRoleUpdate(s, e)
+		safeGo(func() { m.LogRoleUpdate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.ChannelUpdate) {
-		go m.LogChannelUpdate(s, e)
+		safeGo(func() { m.LogChannelUpdate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildUpdate) {
-		go m.LogGuildUpdate(s, e)
+		safeGo(func() { m.LogGuildUpdate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.InviteCreate) {
-		go m.LogInviteCreate(s, e)
+		safeGo(func() { m.LogInviteCreate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.InviteDelete) {
-		go m.LogInviteDelete(s, e)
+		safeGo(func() { m.LogInviteDelete(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.AutoModerationActionExecution) {
-		go m.LogAutoModExecution(s, e)
+		safeGo(func() { m.LogAutoModExecution(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildScheduledEventCreate) {
-		go m.LogScheduledEventCreate(s, e)
+		safeGo(func() { m.LogScheduledEventCreate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildScheduledEventDelete) {
-		go m.LogScheduledEventDelete(s, e)
+		safeGo(func() { m.LogScheduledEventDelete(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildScheduledEventUpdate) {
-		go m.LogScheduledEventUpdate(s, e)
+		safeGo(func() { m.LogScheduledEventUpdate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.ThreadCreate) {
-		go m.LogThreadCreate(s, e)
+		safeGo(func() { m.LogThreadCreate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.ThreadDelete) {
-		go m.LogThreadDelete(s, e)
+		safeGo(func() { m.LogThreadDelete(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.ThreadUpdate) {
-		go m.LogThreadUpdate(s, e)
+		safeGo(func() { m.LogThreadUpdate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.WebhooksUpdate) {
-		go m.LogWebhooksUpdate(s, e)
+		safeGo(func() { m.LogWebhooksUpdate(s, e) })
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildEmojisUpdate) {
-		go m.LogGuildEmojisUpdate(s, e)
+		safeGo(func() { m.LogGuildEmojisUpdate(s, e) })
 	})
 }
 
