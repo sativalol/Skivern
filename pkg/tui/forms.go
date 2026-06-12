@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"skyvern/internal/config"
+	"skyvern/internal/lavalink"
 	"skyvern/internal/storage"
 	"strconv"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 func (m *Model) initGlobalInputs() {
-	m.inputs = make([]textinput.Model, 10)
+	m.inputs = make([]textinput.Model, 14)
 	fields := []struct {
 		placeholder string
 		value       string
@@ -27,6 +28,10 @@ func (m *Model) initGlobalInputs() {
 		{"Logo URL", ""},
 		{"Always on Top (yes/no)", ""},
 		{"Show Logo (yes/no)", ""},
+		{"Auto Start Lavalink (yes/no)", ""},
+		{"Lavalink Host (e.g. localhost:2333)", ""},
+		{"Lavalink Password", ""},
+		{"Home Emoji Server ID", ""},
 	}
 
 	g := config.GetGlobal()
@@ -48,6 +53,14 @@ func (m *Model) initGlobalInputs() {
 	} else {
 		fields[9].value = "no"
 	}
+	if g.AutoStartLavalink {
+		fields[10].value = "yes"
+	} else {
+		fields[10].value = "no"
+	}
+	fields[11].value = g.LavalinkHost
+	fields[12].value = g.LavalinkPass
+	fields[13].value = g.EmojiServerID
 
 	th := Themes[curTheme]
 	inputStyle := lipgloss.NewStyle().Foreground(th.Accent)
@@ -192,6 +205,20 @@ func (m *Model) saveGlobalSettings() {
 	alwaysTop := topVal == "yes" || topVal == "true" || topVal == "1"
 	showLogoVal := strings.TrimSpace(strings.ToLower(m.inputs[9].Value()))
 	showLogo := showLogoVal == "yes" || showLogoVal == "true" || showLogoVal == "1" || showLogoVal == ""
+	lavVal := strings.TrimSpace(strings.ToLower(m.inputs[10].Value()))
+	autoLavalink := lavVal == "yes" || lavVal == "true" || lavVal == "1" || lavVal == ""
+	lavHost := strings.TrimSpace(m.inputs[11].Value())
+	if lavHost == "" {
+		lavHost = "localhost:2333"
+	}
+	lavPass := strings.TrimSpace(m.inputs[12].Value())
+	if lavPass == "" {
+		lavPass = "youshallnotpass"
+	}
+	emojiServerID := strings.TrimSpace(m.inputs[13].Value())
+	if emojiServerID == "" {
+		emojiServerID = "1411452931915645032"
+	}
 
 	storeLoc := config.StorageLoc(strings.TrimSpace(strings.ToLower(m.inputs[5].Value())))
 	if storeLoc != config.LocPortable && storeLoc != config.LocAppData {
@@ -200,21 +227,32 @@ func (m *Model) saveGlobalSettings() {
 	_ = config.SaveTuiCfg(config.TuiCfg{Loc: storeLoc})
 
 	g := config.GlobalCfg{
-		Name:        name,
-		Prefix:      prefix,
-		Footer:      footer,
-		EmbedColor:  int(colVal),
-		MatrixColor: matrixCol,
-		TuiTheme:    curTheme,
-		Spotify:     spotifyVal,
-		FooterIcon:  logoVal,
-		AlwaysOnTop: alwaysTop,
-		ShowLogo:    showLogo,
+		Name:              name,
+		Prefix:            prefix,
+		Footer:            footer,
+		EmbedColor:        int(colVal),
+		MatrixColor:       matrixCol,
+		TuiTheme:          curTheme,
+		Spotify:           spotifyVal,
+		FooterIcon:        logoVal,
+		AlwaysOnTop:       alwaysTop,
+		ShowLogo:          showLogo,
+		AutoStartLavalink: autoLavalink,
+		LavalinkHost:      lavHost,
+		LavalinkPass:      lavPass,
+		EmojiServerID:     emojiServerID,
 	}
 
 	_ = m.db.SaveGlobal(g)
 	config.SetGlobal(g)
 	SetAlwaysOnTop(alwaysTop)
+
+	isLocal := strings.Contains(lavHost, "localhost") || strings.Contains(lavHost, "127.0.0.1")
+	if autoLavalink && isLocal {
+		lavalink.StartServer(config.ResolvePath)
+	} else {
+		lavalink.StopServer()
+	}
 
 	for _, b := range m.bots {
 		_ = m.mgr.UpdateInstance(b.ClientID)

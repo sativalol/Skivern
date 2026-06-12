@@ -1,6 +1,7 @@
 package general
 
 import (
+	"encoding/json"
 	"fmt"
 	"skyvern/internal/config"
 	"skyvern/internal/manager"
@@ -143,6 +144,11 @@ func buildComps(cMap map[string][]*manager.Command, activeCat string, page int) 
 					Disabled: nextDisabled,
 				},
 				discordgo.Button{
+					Label:    "Page...",
+					Style:    discordgo.SecondaryButton,
+					CustomID: fmt.Sprintf("help_btn_goto:%s", activeCat),
+				},
+				discordgo.Button{
 					Label:    "Clear Panel",
 					Style:    discordgo.DangerButton,
 					CustomID: "help_btn_clear",
@@ -153,13 +159,62 @@ func buildComps(cMap map[string][]*manager.Command, activeCat string, page int) 
 }
 
 func HandleHelpComponent(s *discordgo.Session, i *discordgo.InteractionCreate, mgr *manager.Manager) {
-	data := i.MessageComponentData()
 	inst, ok := mgr.ResolvedCfgFor(s.State.User.ID)
 	if !ok {
 		inst = config.Resolve(config.GetGlobal(), config.BotInst{})
 	}
 
 	cMap := groupCmds(mgr.Commands())
+
+	if i.Type == discordgo.InteractionModalSubmit {
+		modalData := i.ModalSubmitData()
+		if strings.HasPrefix(modalData.CustomID, "help_modal_goto:") {
+			parts := strings.Split(modalData.CustomID, ":")
+			cat := "general"
+			if len(parts) == 2 {
+				cat = parts[1]
+			}
+
+			pageNumStr := ""
+			if b, err := json.Marshal(modalData.Components); err == nil {
+				type rawComp struct {
+					Type     int        `json:"type"`
+					CustomID string     `json:"custom_id"`
+					Value    string     `json:"value"`
+					List     []rawComp  `json:"components"`
+				}
+				var rows []rawComp
+				if err := json.Unmarshal(b, &rows); err == nil {
+					for _, r := range rows {
+						for _, c := range r.List {
+							if c.CustomID == "page_num" {
+								pageNumStr = c.Value
+								break
+							}
+						}
+					}
+				}
+			}
+
+			var page int
+			_, _ = fmt.Sscanf(pageNumStr, "%d", &page)
+			page-- // user page 1 is page index 0
+
+			e := buildHelp(inst, cMap, cat, page, inst.Prefix)
+			comps := buildComps(cMap, cat, page)
+
+			_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseUpdateMessage,
+				Data: &discordgo.InteractionResponseData{
+					Embeds:     []*discordgo.MessageEmbed{e},
+					Components: comps,
+				},
+			})
+		}
+		return
+	}
+
+	data := i.MessageComponentData()
 
 	if data.CustomID == "help_btn_clear" {
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -168,6 +223,37 @@ func HandleHelpComponent(s *discordgo.Session, i *discordgo.InteractionCreate, m
 				Content:    "Help panel closed.",
 				Embeds:     []*discordgo.MessageEmbed{},
 				Components: []discordgo.MessageComponent{},
+			},
+		})
+		return
+	}
+
+	if strings.HasPrefix(data.CustomID, "help_btn_goto:") {
+		parts := strings.Split(data.CustomID, ":")
+		cat := "general"
+		if len(parts) == 2 {
+			cat = parts[1]
+		}
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseModal,
+			Data: &discordgo.InteractionResponseData{
+				CustomID: fmt.Sprintf("help_modal_goto:%s", cat),
+				Title:    "Go to Page",
+				Components: []discordgo.MessageComponent{
+					discordgo.ActionsRow{
+						Components: []discordgo.MessageComponent{
+							discordgo.TextInput{
+								CustomID:    "page_num",
+								Label:       "Enter Page Number",
+								Style:       discordgo.TextInputShort,
+								Placeholder: "e.g. 1",
+								Required:    true,
+								MinLength:   1,
+								MaxLength:   3,
+							},
+						},
+					},
+				},
 			},
 		})
 		return

@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"skyvern/internal/storage"
+
 	"github.com/bwmarrin/discordgo"
 	bolt "go.etcd.io/bbolt"
-	"skyvern/internal/storage"
 )
 
 type PalantirLog struct {
@@ -600,6 +601,43 @@ func (m *Manager) checkAntilink(s *discordgo.Session, msg *discordgo.MessageCrea
 			_, _ = s.ChannelMessageSend(msg.ChannelID, fmt.Sprintf("[!] <@%s> has been banned for posting links.", msg.Author.ID))
 		default:
 			_, _ = s.ChannelMessageSend(msg.ChannelID, fmt.Sprintf("[!] <@%s>, links are not allowed here.", msg.Author.ID))
+		}
+		return true
+	}
+	return false
+}
+
+func (m *Manager) IsFiltered(gid string, content string) bool {
+	cfg, err := m.GetFilterCfg(gid)
+	if err != nil || !cfg.Enabled {
+		return false
+	}
+	lowContent := strings.ToLower(content)
+	hasViolation := false
+	for _, w := range cfg.BlockedWords {
+		if containsBypass(lowContent, w) {
+			hasViolation = true
+			break
+		}
+	}
+	if !hasViolation {
+		for _, rxStr := range cfg.Regexes {
+			if rxStr != "" {
+				if re, err := regexp.Compile(rxStr); err == nil {
+					if re.MatchString(content) {
+						hasViolation = true
+						break
+					}
+				}
+			}
+		}
+	}
+	if hasViolation {
+		for _, aw := range cfg.AllowedWords {
+			lowAW := strings.ToLower(aw)
+			if lowAW != "" && strings.Contains(lowContent, lowAW) {
+				return false
+			}
 		}
 		return true
 	}

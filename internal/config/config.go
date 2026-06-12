@@ -19,17 +19,21 @@ const (
 )
 
 type GlobalCfg struct {
-	Name        string `json:"name"`
-	Prefix      string `json:"prefix"`
-	Footer      string `json:"footer"`
-	EmbedColor  int    `json:"embed_color"`
-	AvatarURL   string `json:"avatar_url,omitempty"`
-	FooterIcon  string `json:"footer_icon,omitempty"`
-	TuiTheme    int    `json:"tui_theme"`
-	MatrixColor string `json:"matrix_color"`
-	Spotify     string `json:"spotify"`
-	AlwaysOnTop bool   `json:"always_on_top"`
-	ShowLogo    bool   `json:"show_logo"`
+	Name              string `json:"name"`
+	Prefix            string `json:"prefix"`
+	Footer            string `json:"footer"`
+	EmbedColor        int    `json:"embed_color"`
+	AvatarURL         string `json:"avatar_url,omitempty"`
+	FooterIcon        string `json:"footer_icon,omitempty"`
+	TuiTheme          int    `json:"tui_theme"`
+	MatrixColor       string `json:"matrix_color"`
+	Spotify           string `json:"spotify"`
+	AlwaysOnTop       bool   `json:"always_on_top"`
+	ShowLogo          bool   `json:"show_logo"`
+	AutoStartLavalink bool   `json:"auto_start_lavalink"`
+	LavalinkHost      string `json:"lavalink_host,omitempty"`
+	LavalinkPass      string `json:"lavalink_pass,omitempty"`
+	EmojiServerID     string `json:"emoji_server_id,omitempty"`
 }
 
 type BotInst struct {
@@ -98,15 +102,19 @@ func Resolve(g GlobalCfg, inst BotInst) ResCfg {
 
 func DefGlobal() GlobalCfg {
 	return GlobalCfg{
-		Name:        DefaultName,
-		Prefix:      DefaultPrefix,
-		Footer:      DefaultFooter,
-		EmbedColor:  ColorDefault,
-		MatrixColor: "rgb",
-		Spotify:     "no",
-		AlwaysOnTop: false,
-		FooterIcon:  "https://files.catbox.moe/xxv6qt.webp",
-		ShowLogo:    true,
+		Name:              DefaultName,
+		Prefix:            DefaultPrefix,
+		Footer:            DefaultFooter,
+		EmbedColor:        ColorDefault,
+		MatrixColor:       "rgb",
+		Spotify:           "no",
+		AlwaysOnTop:       false,
+		FooterIcon:        "https://files.catbox.moe/xxv6qt.webp",
+		ShowLogo:          true,
+		AutoStartLavalink: true,
+		LavalinkHost:      "localhost:2333",
+		LavalinkPass:      "youshallnotpass",
+		EmojiServerID:     "1411452931915645032",
 	}
 }
 

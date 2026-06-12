@@ -226,6 +226,8 @@ func (d *DB) GetStarboardCfg(gid string) (StarboardCfg, error) {
 type TempVoiceCfg struct {
 	ParentChannelID string `json:"parent_channel_id"`
 	CategoryID      string `json:"category_id"`
+	InterfaceChanID string `json:"interface_chan_id,omitempty"`
+	InterfaceMsgID  string `json:"interface_msg_id,omitempty"`
 	Enabled         bool   `json:"enabled"`
 }
 

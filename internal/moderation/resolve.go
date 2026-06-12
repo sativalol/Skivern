@@ -37,20 +37,46 @@ func ResolveMember(s *discordgo.Session, gid, query string) (*discordgo.Member, 
 		}
 	}
 
-	if len(q) >= 17 && len(q) <= 20 {
-		if _, err := s.User(q); err == nil {
-			if m, err := s.State.Member(gid, q); err == nil {
-				return m, nil
+	isID := true
+	if len(q) >= 17 && len(q) <= 21 {
+		for _, r := range q {
+			if r < '0' || r > '9' {
+				isID = false
+				break
 			}
-			if m, err := s.GuildMember(gid, q); err == nil {
-				return m, nil
-			}
+		}
+	} else {
+		isID = false
+	}
+	if isID {
+		if m, err := s.State.Member(gid, q); err == nil {
+			return m, nil
+		}
+		if m, err := s.GuildMember(gid, q); err == nil {
+			return m, nil
 		}
 	}
 
 	ql := strings.ToLower(q)
 
-	// query state cache first to avoid API call
+	if ms, err := s.GuildMembersSearch(gid, q, 100); err == nil && len(ms) > 0 {
+		for _, m := range ms {
+			if m.User != nil && (strings.EqualFold(m.User.Username, q) || strings.EqualFold(m.Nick, q) || strings.EqualFold(m.User.GlobalName, q)) {
+				return m, nil
+			}
+		}
+		for _, m := range ms {
+			if m.User != nil {
+				uName := strings.ToLower(m.User.Username)
+				nick := strings.ToLower(m.Nick)
+				gName := strings.ToLower(m.User.GlobalName)
+				if strings.Contains(uName, ql) || strings.Contains(nick, ql) || strings.Contains(gName, ql) {
+					return m, nil
+				}
+			}
+		}
+	}
+
 	if g, err := s.State.Guild(gid); err == nil {
 		for _, m := range g.Members {
 			if m.User == nil {
@@ -58,33 +84,30 @@ func ResolveMember(s *discordgo.Session, gid, query string) (*discordgo.Member, 
 			}
 			uName := strings.ToLower(m.User.Username)
 			nick := strings.ToLower(m.Nick)
+			gName := strings.ToLower(m.User.GlobalName)
 
-			if uName == ql || nick == ql ||
-				strings.HasPrefix(uName, ql) || strings.HasPrefix(nick, ql) ||
-				strings.HasSuffix(uName, ql) || strings.HasSuffix(nick, ql) ||
-				strings.Contains(uName, ql) || strings.Contains(nick, ql) {
+			if uName == ql || nick == ql || gName == ql ||
+				strings.HasPrefix(uName, ql) || strings.HasPrefix(nick, ql) || strings.HasPrefix(gName, ql) ||
+				strings.Contains(uName, ql) || strings.Contains(nick, ql) || strings.Contains(gName, ql) {
 				return m, nil
 			}
 		}
 	}
 
-	lst, err := s.GuildMembers(gid, "", 1000)
-	if err != nil {
-		return nil, err
-	}
+	if lst, err := s.GuildMembers(gid, "", 1000); err == nil {
+		for _, m := range lst {
+			if m.User == nil {
+				continue
+			}
+			uName := strings.ToLower(m.User.Username)
+			nick := strings.ToLower(m.Nick)
+			gName := strings.ToLower(m.User.GlobalName)
 
-	for _, m := range lst {
-		if m.User == nil {
-			continue
-		}
-		uName := strings.ToLower(m.User.Username)
-		nick := strings.ToLower(m.Nick)
-
-		if uName == ql || nick == ql ||
-			strings.HasPrefix(uName, ql) || strings.HasPrefix(nick, ql) ||
-			strings.HasSuffix(uName, ql) || strings.HasSuffix(nick, ql) ||
-			strings.Contains(uName, ql) || strings.Contains(nick, ql) {
-			return m, nil
+			if uName == ql || nick == ql || gName == ql ||
+				strings.HasPrefix(uName, ql) || strings.HasPrefix(nick, ql) || strings.HasPrefix(gName, ql) ||
+				strings.Contains(uName, ql) || strings.Contains(nick, ql) || strings.Contains(gName, ql) {
+				return m, nil
+			}
 		}
 	}
 	return nil, nil

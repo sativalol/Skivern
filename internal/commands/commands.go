@@ -4,6 +4,7 @@ import (
 	"skyvern/internal/commands/fun"
 	"skyvern/internal/commands/general"
 	"skyvern/internal/commands/moderation"
+	"skyvern/internal/commands/music"
 	"skyvern/internal/commands/utility"
 	"skyvern/internal/manager"
 
@@ -99,7 +100,7 @@ var Registry = []*manager.Command{
 	utility.Screenshot,
 	utility.Starboard,
 	utility.Tag,
-	utility.TempVoice,
+	utility.VoiceMaster,
 	utility.Ticker,
 	general.Vanity,
 	general.Vouch,
@@ -148,6 +149,19 @@ var Registry = []*manager.Command{
 	fun.StockCmd,
 	fun.Rate,
 	fun.Ship,
+
+	music.Play,
+	music.Stop,
+	music.Pause,
+	music.Resume,
+	music.Skip,
+	music.Queue,
+	music.NP,
+	music.Seek,
+	music.Volume,
+	music.Loop,
+	music.Shuffle,
+	music.Clear,
 }
 
 func Init(mgr *manager.Manager) {
@@ -171,6 +185,12 @@ func Init(mgr *manager.Manager) {
 	})
 	mgr.RegisterComponentHandler("vouch:*", func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		general.HandleVouchComponent(s, i, mgr)
+	})
+	mgr.RegisterComponentHandler("history_*", func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		moderation.HandleHistoryComponent(s, i, mgr)
+	})
+	mgr.RegisterComponentHandler("vm_*", func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		utility.HandleVoiceMasterComponent(s, i, mgr)
 	})
 }
 

@@ -130,11 +130,10 @@ func (d *DB) seedGlobal() error {
 }
 
 func (d *DB) GetGlobal() (config.GlobalCfg, error) {
-	var cfg config.GlobalCfg
+	cfg := config.DefGlobal()
 	err := d.b.View(func(tx *bolt.Tx) error {
 		v := tx.Bucket(bktGlobal).Get(keyGlobal)
 		if v == nil {
-			cfg = config.DefGlobal()
 			return nil
 		}
 		return json.Unmarshal(v, &cfg)

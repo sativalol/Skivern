@@ -16,22 +16,12 @@ A multi-instance Discord bot runner and moderation tool built in Go, managed dir
 
 You can build the executable directly, or use our compiler script:
 
-#### Interactive Builder (Recommended)
+#### Builder
 ```bash
-# Run the interactive compiler
+# Run the compiler
 go run build.go
 ```
 This prints a menu to let you choose your target platform (Windows, macOS, Linux, Android) and automatically builds the binary with correct env configuration.
-
-#### Manual Build (Current Host)
-```bash
-# Build the executable
-go build -o skyvern.exe main.go
-
-# Launch the TUI
-./skyvern.exe
-```
-
 
 ---
 
@@ -42,6 +32,7 @@ Built with Bubble Tea. Use **`Tab`** to cycle through the panels:
 * **`Tab 0` Dashboard** – Active bot instances, hardware usage (CPU/RAM), etc.
 * **`Tab 1` Settings** – Naming, prefixes, embed structures, and theme setups.
 * **`Tab 2` Palantir** – Logs and tracking cfg.
+* **`Tab 3` Lavalink** - See lavalink logs.
 
 > **Controls:** Press **`E`** to edit configurations within any tab. Use **`Tab`** or **`Enter`** to switch inputs, and **`Esc`** to discard changes.
 

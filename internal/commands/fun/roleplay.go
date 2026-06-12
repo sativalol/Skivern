@@ -13,6 +13,8 @@ import (
 	"skyvern/internal/moderation"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -25,6 +27,16 @@ type rpConfig struct {
 	SelfTexts   []string
 	TargetTexts []string
 }
+
+type rpCache struct {
+	mu   sync.Mutex
+	urls []string
+}
+
+var (
+	rpCaches   = make(map[string]*rpCache)
+	rpCachesMu sync.Mutex
+)
 
 func fetchGiphy(query string) string {
 	u := fmt.Sprintf("https://api.giphy.com/v1/gifs/search?api_key=dc6zaTOxFJmzC&q=%s&limit=20", url.QueryEscape(query))
@@ -89,18 +101,132 @@ func fetchWaifuPics(cat string) string {
 	return res.URL
 }
 
-func fetchRPImage(catNekos, catWaifu, giphyQuery string) string {
+func fetchNekosBestBatch(cat string) []string {
+	resp, err := http.Get(fmt.Sprintf("https://nekos.best/api/v2/%s?amount=20", cat))
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var res struct {
+		Results []struct {
+			URL string `json:"url"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil
+	}
+	var urls []string
+	for _, r := range res.Results {
+		if r.URL != "" {
+			urls = append(urls, r.URL)
+		}
+	}
+	return urls
+}
+
+func fetchWaifuPicsBatch(cat string) []string {
+	reqBody, _ := json.Marshal(map[string]interface{}{"exclude": []string{}})
+	resp, err := http.Post("https://api.waifu.pics/many/sfw/"+cat, "application/json", bytes.NewBuffer(reqBody))
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var res struct {
+		Files []string `json:"files"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil
+	}
+	return res.Files
+}
+
+func fetchRPImagesBatch(catNekos, catWaifu, giphyQuery string) []string {
+	var urls []string
 	if catNekos != "" {
-		if u := fetchNekosBest(catNekos); u != "" {
-			return u
+		urls = fetchNekosBestBatch(catNekos)
+		if len(urls) > 0 {
+			return urls
 		}
 	}
 	if catWaifu != "" {
-		if u := fetchWaifuPics(catWaifu); u != "" {
-			return u
+		urls = fetchWaifuPicsBatch(catWaifu)
+		if len(urls) > 0 {
+			return urls
 		}
 	}
-	return fetchGiphy(giphyQuery)
+	if giphyQuery != "" {
+		u := fetchGiphy(giphyQuery)
+		if u != "" {
+			return []string{u}
+		}
+	}
+	return nil
+}
+
+func refillRPCache(c *rpCache, catNekos, catWaifu, giphyQuery string) {
+	urls := fetchRPImagesBatch(catNekos, catWaifu, giphyQuery)
+	if len(urls) == 0 {
+		return
+	}
+	c.mu.Lock()
+	for _, u := range urls {
+		exists := false
+		for _, existing := range c.urls {
+			if existing == u {
+				exists = true
+				break
+			}
+		}
+		if !exists && len(c.urls) < 50 {
+			c.urls = append(c.urls, u)
+		}
+	}
+	c.mu.Unlock()
+}
+
+func getRPImageCached(catNekos, catWaifu, giphyQuery string) string {
+	key := fmt.Sprintf("%s:%s:%s", catNekos, catWaifu, giphyQuery)
+	
+	rpCachesMu.Lock()
+	c, ok := rpCaches[key]
+	if !ok {
+		c = &rpCache{}
+		rpCaches[key] = c
+	}
+	rpCachesMu.Unlock()
+
+	c.mu.Lock()
+	if len(c.urls) > 0 {
+		idx := rand.Intn(len(c.urls))
+		url := c.urls[idx]
+		c.urls = append(c.urls[:idx], c.urls[idx+1:]...)
+		c.mu.Unlock()
+		
+		if len(c.urls) < 5 {
+			go refillRPCache(c, catNekos, catWaifu, giphyQuery)
+		}
+		return url
+	}
+	c.mu.Unlock()
+
+	urls := fetchRPImagesBatch(catNekos, catWaifu, giphyQuery)
+	if len(urls) == 0 {
+		return ""
+	}
+
+	c.mu.Lock()
+	if len(urls) > 1 {
+		c.urls = append(c.urls, urls[1:]...)
+	}
+	c.mu.Unlock()
+
+	return urls[0]
+}
+
+func fetchRPImage(catNekos, catWaifu, giphyQuery string) string {
+	return getRPImageCached(catNekos, catWaifu, giphyQuery)
 }
 
 func resolveRPTarget(s *discordgo.Session, gid, query string) string {
@@ -134,7 +260,7 @@ func makeRPCommand(cfg rpConfig) *manager.Command {
 				txt = fmt.Sprintf(cfg.TargetTexts[rand.Intn(len(cfg.TargetTexts))], sender, target)
 			}
 
-			gif := fetchRPImage(cfg.NekosCat, cfg.WaifuCat, cfg.GiphySearch)
+			gif := getRPImageCached(cfg.NekosCat, cfg.WaifuCat, cfg.GiphySearch)
 			emb := config.Build(ctx.Cfg, config.EmbedOpt{
 				Description: txt,
 			})
@@ -146,7 +272,6 @@ func makeRPCommand(cfg rpConfig) *manager.Command {
 	}
 }
 
-// Custom specialized roleplay commands
 var Maclookup = &manager.Command{
 	Trigger:     "maclookup",
 	Aliases:     []string{"mac"},
@@ -249,7 +374,6 @@ var Touch = &manager.Command{
 	},
 }
 
-// Generate the standard roleplay commands from templates
 var standardRPConfigs = []rpConfig{
 	{
 		Trigger: "airkiss", GiphySearch: "anime airkiss",
@@ -377,6 +501,11 @@ var standardRPConfigs = []rpConfig{
 		TargetTexts: []string{"%s licks %s!"},
 	},
 	{
+		Trigger: "kiss", NekosCat: "kiss", WaifuCat: "kiss", GiphySearch: "anime kiss",
+		SelfTexts: []string{"%s kissed their hand."},
+		TargetTexts: []string{"%s kissed %s! 💋", "%s gave %s a passionate kiss! ❤️"},
+	},
+	{
 		Trigger: "love", GiphySearch: "anime love",
 		SelfTexts: []string{"%s sends love!"},
 		TargetTexts: []string{"%s showers %s with love! 💕"},
@@ -441,11 +570,7 @@ var standardRPConfigs = []rpConfig{
 		SelfTexts: []string{"%s punches the air."},
 		TargetTexts: []string{"%s punches %s! 👊"},
 	},
-	{
-		Trigger: "rape", GiphySearch: "anime intimate",
-		SelfTexts: []string{"%s is feeling intimate."},
-		TargetTexts: []string{"%s gets intimate with %s."},
-	},
+
 	{
 		Trigger: "sad", GiphySearch: "anime sad",
 		SelfTexts: []string{"%s is feeling sad... 😞"},
@@ -583,12 +708,36 @@ var standardRPConfigs = []rpConfig{
 	},
 }
 
-// Registry exported commands slice
 var RoleplayCommands []*manager.Command
+
+func PrepopulateRPCaches() {
+	go func() {
+		time.Sleep(5 * time.Second)
+		
+		configs := make([]rpConfig, len(standardRPConfigs))
+		copy(configs, standardRPConfigs)
+		
+		for _, rp := range configs {
+			key := fmt.Sprintf("%s:%s:%s", rp.NekosCat, rp.WaifuCat, rp.GiphySearch)
+			
+			rpCachesMu.Lock()
+			c, ok := rpCaches[key]
+			if !ok {
+				c = &rpCache{}
+				rpCaches[key] = c
+			}
+			rpCachesMu.Unlock()
+			
+			refillRPCache(c, rp.NekosCat, rp.WaifuCat, rp.GiphySearch)
+			time.Sleep(200 * time.Millisecond)
+		}
+	}()
+}
 
 func init() {
 	RoleplayCommands = append(RoleplayCommands, Maclookup, Touch)
 	for _, rp := range standardRPConfigs {
 		RoleplayCommands = append(RoleplayCommands, makeRPCommand(rp))
 	}
+	PrepopulateRPCaches()
 }

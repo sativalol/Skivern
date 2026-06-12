@@ -171,7 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "tab":
-			m.tab = (m.tab + 1) % 3
+			m.tab = (m.tab + 1) % 4
 		case "up", "k", "left", "h":
 			if m.selIdx > 0 {
 				m.selIdx--
@@ -303,6 +303,8 @@ func (m Model) View() string {
 		viewName = "SETTINGS"
 	} else if m.tab == 2 {
 		viewName = "PALANTIR"
+	} else if m.tab == 3 {
+		viewName = "LAVALINK"
 	}
 	banner := bannerStyle.Render(fmt.Sprintf(" SKYVERN  |  %s  |  %d BOTS ACTIVE  |  THEME: %s ", viewName, len(m.bots), th.Name))
 
@@ -318,8 +320,10 @@ func (m Model) View() string {
 		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [↑/↓] Scroll Bots   [Tab] Settings   [N] New   [E] Edit   [S] Toggle State   [T] Cycle Themes   [X] Delete   [Q] Quit")
 	} else if m.tab == 1 {
 		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] Palantir Settings   [E] Edit Globals   [T] Cycle Themes   [Q] Quit")
+	} else if m.tab == 2 {
+		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] Lavalink Status   [E] Edit Palantir   [T] Cycle Themes   [Q] Quit")
 	} else {
-		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] Dashboard   [E] Edit Palantir   [T] Cycle Themes   [Q] Quit")
+		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] Dashboard   [T] Cycle Themes   [Q] Quit")
 	}
 
 	var body string

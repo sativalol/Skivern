@@ -6,6 +6,7 @@ import (
 	"skyvern/internal/manager"
 	"skyvern/internal/moderation"
 	"skyvern/internal/storage"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -13,37 +14,14 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func init() {
-	manager.RegisterHelp("history", []manager.HelpPage{
-		{
-			Command:     "History View User",
-			Syntax:      ".history <member>",
-			Description: "List all moderation history and cases for a specific user.",
-		},
-		{
-			Command:     "History View Case",
-			Syntax:      ".history view <case_id>",
-			Description: "Show details about a specific moderation case ID.",
-		},
-		{
-			Command:     "History Remove Case",
-			Syntax:      ".history remove <member> <case_id>",
-			Description: "Delete a specific moderation case for a user.",
-		},
-		{
-			Command:     "History Remove All Cases",
-			Syntax:      ".history removeall <member>",
-			Description: "Delete all historical moderation cases for a user.",
-		},
-	})
-}
-
 var Warn = &manager.Command{
 	Trigger:     "warn",
+	Aliases:     []string{"w"},
 	Name:        "warn",
-	Description: "Warn a member",
+	Description: "Issue a warning to a member",
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Cfg.EmbedColor = 0x808080
 		if !checkPerm(ctx, discordgo.PermissionManageMessages) {
 			return ctx.Reply("[!] You need Manage Messages permission.")
 		}
@@ -58,6 +36,8 @@ var Warn = &manager.Command{
 		if reason == "" {
 			reason = "No reason provided."
 		}
+
+		moderation.DMUserAction(ctx.Session, ctx.GuildID(), "Warn", m.User.ID, ctx.AuthorID(), reason)
 
 		c := storage.Case{
 			UserID:    m.User.ID,
@@ -83,6 +63,7 @@ var Unwarn = &manager.Command{
 	Description: "Remove a warning from a member by Case ID",
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Cfg.EmbedColor = 0x808080
 		if !checkPerm(ctx, discordgo.PermissionManageMessages) {
 			return ctx.Reply("[!] You need Manage Messages permission.")
 		}
@@ -99,6 +80,8 @@ var Unwarn = &manager.Command{
 			return ctx.Reply(fmt.Sprintf("[!] Case #%d not found or is not a warning.", id))
 		}
 
+		moderation.DMUserAction(ctx.Session, ctx.GuildID(), "Unwarn", c.UserID, ctx.AuthorID(), "Warning revoked")
+
 		if err := ctx.DB.DeleteCase(ctx.GuildID(), id); err != nil {
 			return ctx.Reply(fmt.Sprintf("[!] Failed to delete case: %v", err))
 		}
@@ -114,6 +97,7 @@ var Jail = &manager.Command{
 	Description: "Jail a user by stripping roles and applying Jailed role",
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Cfg.EmbedColor = 0x808080
 		if !checkPerm(ctx, discordgo.PermissionManageRoles) {
 			return ctx.Reply("[!] You need Manage Roles permission.")
 		}
@@ -163,6 +147,8 @@ var Jail = &manager.Command{
 			reason = "No reason provided."
 		}
 
+		moderation.DMUserAction(ctx.Session, gid, "Jail", m.User.ID, ctx.AuthorID(), reason)
+
 		c := storage.Case{
 			UserID:    m.User.ID,
 			ModID:     ctx.AuthorID(),
@@ -186,6 +172,7 @@ var Unjail = &manager.Command{
 	Description: "Restore roles and remove Jailed role from a user",
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Cfg.EmbedColor = 0x808080
 		if !checkPerm(ctx, discordgo.PermissionManageRoles) {
 			return ctx.Reply("[!] You need Manage Roles permission.")
 		}
@@ -214,6 +201,8 @@ var Unjail = &manager.Command{
 			_ = ctx.Session.GuildMemberRoleRemove(gid, m.User.ID, jailRoleID)
 		}
 
+		moderation.DMUserAction(ctx.Session, gid, "Unjail", m.User.ID, ctx.AuthorID(), "Unjailed member")
+
 		oldRoles, err := ctx.DB.GetJailed(gid, m.User.ID)
 		if err == nil {
 			for _, rid := range oldRoles {
@@ -234,6 +223,7 @@ var Lockdown = &manager.Command{
 	Description: "Lock down a channel or all text channels",
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Cfg.EmbedColor = 0x808080
 		if !checkPerm(ctx, discordgo.PermissionManageChannels) {
 			return ctx.Reply("[!] You need Manage Channels permission.")
 		}
@@ -285,6 +275,7 @@ var Unlock = &manager.Command{
 	Description: "Unlock a channel or all text channels",
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Cfg.EmbedColor = 0x808080
 		if !checkPerm(ctx, discordgo.PermissionManageChannels) {
 			return ctx.Reply("[!] You need Manage Channels permission.")
 		}
@@ -337,6 +328,7 @@ var StripStaff = &manager.Command{
 	Description: "Remove all staff roles from a targeted member",
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Cfg.EmbedColor = 0x808080
 		if !checkPerm(ctx, discordgo.PermissionAdministrator) {
 			return ctx.Reply("[!] You need Administrator permission to use this.")
 		}
@@ -391,14 +383,18 @@ var History = &manager.Command{
 	Description: "View and manage moderation history/cases",
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Cfg.EmbedColor = 0x808080
 		if !checkPerm(ctx, discordgo.PermissionManageMessages) {
 			return ctx.Reply("[!] You need Manage Messages permission.")
 		}
-		if len(ctx.Args) == 0 {
-			return ctx.SendHelp("history")
-		}
 
 		gid := ctx.GuildID()
+
+		// If no argument, give correct syntax error as shown in screenshot
+		if len(ctx.Args) == 0 {
+			return ctx.Reply("[!] Incorrect syntax. Try checking help for `history`.")
+		}
+
 		sub := strings.ToLower(ctx.Args[0])
 
 		switch sub {
@@ -462,12 +458,30 @@ var History = &manager.Command{
 			if err != nil || len(list) == 0 {
 				return ctx.Reply(fmt.Sprintf("[+] No moderation history found for **%s**.", m.User.Username))
 			}
-			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("Cases for **%s**:\n\n", m.User.Username))
-			for _, c := range list {
-				sb.WriteString(fmt.Sprintf("`#%d` | **%s** | Reason: %s | Mod: <@%s> | %s\n", c.ID, strings.Title(c.Type), c.Reason, c.ModID, c.Timestamp.Format("2006-01-02")))
+
+			authorName := ctx.AuthorTag()
+			var authorAvatar string
+			if ctx.Interact != nil && ctx.Interact.Member != nil && ctx.Interact.Member.User != nil {
+				authorAvatar = ctx.Interact.Member.User.AvatarURL("64")
+			} else if ctx.Message != nil && ctx.Message.Author != nil {
+				authorAvatar = ctx.Message.Author.AvatarURL("64")
 			}
-			return ctx.Reply(sb.String())
+
+			emb, comps := buildHistoryResponse(ctx.Session, m.User.Username, authorName, authorAvatar, list, 1, true)
+			if ctx.Interact != nil {
+				return ctx.Session.InteractionRespond(ctx.Interact, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Embeds:     []*discordgo.MessageEmbed{emb},
+						Components: comps,
+					},
+				})
+			}
+			_, err = ctx.Session.ChannelMessageSendComplex(ctx.Message.ChannelID, &discordgo.MessageSend{
+				Embeds:     []*discordgo.MessageEmbed{emb},
+				Components: comps,
+			})
+			return err
 		}
 	},
 }
@@ -476,28 +490,268 @@ var ModStats = &manager.Command{
 	Trigger:     "modstats",
 	Aliases:     []string{"ms"},
 	Name:        "modstats",
-	Description: "Shows moderation statistics per moderator",
+	Description: "Shows moderation statistics for a user",
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Cfg.EmbedColor = 0x808080
 		if !checkPerm(ctx, discordgo.PermissionManageMessages) {
 			return ctx.Reply("[!] You need Manage Messages permission.")
 		}
 		gid := ctx.GuildID()
+
+		var targetMember *discordgo.Member
+		var err error
+		if len(ctx.Args) > 0 {
+			targetMember, err = moderation.ResolveMember(ctx.Session, gid, ctx.Args[0])
+			if err != nil || targetMember == nil {
+				return ctx.Reply("[!] Could not resolve member.")
+			}
+		} else {
+			if ctx.Interact != nil && ctx.Interact.Member != nil {
+				targetMember = ctx.Interact.Member
+			} else if ctx.Message != nil && ctx.Message.Member != nil {
+				targetMember = ctx.Message.Member
+			} else if ctx.Message != nil && ctx.Message.Author != nil {
+				targetMember, _ = ctx.Session.GuildMember(gid, ctx.Message.Author.ID)
+			}
+		}
+
+		if targetMember == nil {
+			return ctx.Reply("[!] Could not resolve member.")
+		}
+
 		list, err := ctx.DB.ListCases(gid, "")
-		if err != nil || len(list) == 0 {
+		if err != nil {
 			return ctx.Reply("[+] No cases recorded in this guild.")
 		}
 
-		counts := make(map[string]int)
+		var w7, k7, b7, u7, t7, j7 int
+		var w14, k14, b14, u14, t14, j14 int
+		var wAll, kAll, bAll, uAll, tAll, jAll int
+
+		now := time.Now()
 		for _, c := range list {
-			counts[c.ModID]++
+			if c.UserID != targetMember.User.ID {
+				continue
+			}
+
+			age := now.Sub(c.Timestamp)
+			in7 := age <= 7*24*time.Hour
+			in14 := age <= 14*24*time.Hour
+
+			switch strings.ToLower(c.Type) {
+			case "warn":
+				wAll++
+				if in7 { w7++ }
+				if in14 { w14++ }
+			case "kick":
+				kAll++
+				if in7 { k7++ }
+				if in14 { k14++ }
+			case "ban", "tempban", "softban", "hardban":
+				bAll++
+				if in7 { b7++ }
+				if in14 { b14++ }
+			case "unban":
+				uAll++
+				if in7 { u7++ }
+				if in14 { u14++ }
+			case "timeout":
+				tAll++
+				if in7 { t7++ }
+				if in14 { t14++ }
+			case "jail":
+				jAll++
+				if in7 { j7++ }
+				if in14 { j14++ }
+			}
 		}
 
-		var sb strings.Builder
-		sb.WriteString("Moderator Action Counts:\n\n")
-		for modID, count := range counts {
-			sb.WriteString(fmt.Sprintf("<@%s> (`%s`): %d cases\n", modID, modID, count))
+		val7 := fmt.Sprintf("> **Warned:** %d\n> **Kicked:** %d\n> **Banned:** %d\n> **Unbanned:** %d\n> **Timed Out:** %d\n> **Jailed:** %d", w7, k7, b7, u7, t7, j7)
+		val14 := fmt.Sprintf("> **Warned:** %d\n> **Kicked:** %d\n> **Banned:** %d\n> **Unbanned:** %d\n> **Timed Out:** %d\n> **Jailed:** %d", w14, k14, b14, u14, t14, j14)
+		valAll := fmt.Sprintf("> **Warned:** %d\n> **Kicked:** %d\n> **Banned:** %d\n> **Unbanned:** %d\n> **Timed Out:** %d\n> **Jailed:** %d", wAll, kAll, bAll, uAll, tAll, jAll)
+
+		emb := &discordgo.MessageEmbed{
+			Author: &discordgo.MessageEmbedAuthor{
+				Name:    targetMember.User.Username,
+				IconURL: targetMember.User.AvatarURL("64"),
+			},
+			Title: fmt.Sprintf("Moderation Statistics for %s", targetMember.User.Username),
+			Color: 0x808080,
+			Fields: []*discordgo.MessageEmbedField{
+				config.Field("7 days", val7, true),
+				config.Field("14 days", val14, true),
+				config.Field("All time", valAll, true),
+			},
 		}
-		return ctx.Reply(sb.String())
+
+		return ctx.Respond(emb)
 	},
+}
+
+func buildHistoryResponse(s *discordgo.Session, targetName, authorName, authorAvatar string, list []storage.Case, page int, desc bool) (*discordgo.MessageEmbed, []discordgo.MessageComponent) {
+	sort.Slice(list, func(i, j int) bool {
+		if desc {
+			return list[i].ID > list[j].ID
+		}
+		return list[i].ID < list[j].ID
+	})
+
+	pageSize := 3
+	totalCases := len(list)
+	totalPages := (totalCases + pageSize - 1) / pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	if page < 1 {
+		page = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if end > totalCases {
+		end = totalCases
+	}
+	pageList := list[start:end]
+
+	var sb strings.Builder
+	for _, c := range pageList {
+		actName := strings.Title(c.Type)
+		switch strings.ToLower(c.Type) {
+		case "warn":
+			actName = "Warned"
+		case "jail":
+			actName = "Jailed"
+		case "kick":
+			actName = "Kicked"
+		case "ban", "tempban", "softban", "hardban":
+			actName = "Banned"
+		case "unban":
+			actName = "Unbanned"
+		case "timeout":
+			actName = "Timed Out"
+		case "untimeout":
+			actName = "Untimeouted"
+		}
+
+		sb.WriteString(fmt.Sprintf("**Case Log #%d | %s**\n", c.ID, actName))
+		sb.WriteString(fmt.Sprintf("**Punished:** %s\n", c.Timestamp.Format("January 2, 2006 at 3:04 PM")))
+		
+		modName := c.ModID
+		if modUser, err := s.User(c.ModID); err == nil && modUser != nil {
+			modName = modUser.Username
+		}
+		sb.WriteString(fmt.Sprintf("**Moderator:** %s ( %s )\n", modName, c.ModID))
+		sb.WriteString(fmt.Sprintf("**Reason:** %s\n\n", c.Reason))
+	}
+
+	sb.WriteString(fmt.Sprintf("Page %d/%d (%d punishments, 0 notes)", page, totalPages, totalCases))
+
+	emb := &discordgo.MessageEmbed{
+		Author: &discordgo.MessageEmbedAuthor{
+			Name:    authorName,
+			IconURL: authorAvatar,
+		},
+		Title:       fmt.Sprintf("Punishment History for %s", targetName),
+		Description: sb.String(),
+		Color:       0x808080,
+	}
+
+	sortVal := 0
+	if desc {
+		sortVal = 1
+	}
+
+	prevPage := page - 1
+	if prevPage < 1 {
+		prevPage = totalPages
+	}
+	nextPage := page + 1
+	if nextPage > totalPages {
+		nextPage = 1
+	}
+
+	targetID := list[0].UserID
+
+	row := discordgo.ActionsRow{
+		Components: []discordgo.MessageComponent{
+			discordgo.Button{
+				Label:    "◀",
+				Style:    discordgo.PrimaryButton,
+				CustomID: fmt.Sprintf("history_prev_%s_%d_%d", targetID, prevPage, sortVal),
+				Disabled: totalPages <= 1,
+			},
+			discordgo.Button{
+				Label:    "▶",
+				Style:    discordgo.PrimaryButton,
+				CustomID: fmt.Sprintf("history_next_%s_%d_%d", targetID, nextPage, sortVal),
+				Disabled: totalPages <= 1,
+			},
+			discordgo.Button{
+				Label:    "⇅",
+				Style:    discordgo.SecondaryButton,
+				CustomID: fmt.Sprintf("history_sort_%s_%d_%d", targetID, page, 1-sortVal),
+			},
+			discordgo.Button{
+				Label:    "❌",
+				Style:    discordgo.DangerButton,
+				CustomID: fmt.Sprintf("history_close_%s_%d_%d", targetID, page, sortVal),
+			},
+		},
+	}
+
+	return emb, []discordgo.MessageComponent{row}
+}
+
+func HandleHistoryComponent(s *discordgo.Session, i *discordgo.InteractionCreate, mgr *manager.Manager) {
+	id := i.MessageComponentData().CustomID
+	parts := strings.Split(id, "_")
+	if len(parts) < 5 {
+		return
+	}
+
+	action := parts[1]
+	targetID := parts[2]
+	page, _ := strconv.Atoi(parts[3])
+	sortVal, _ := strconv.Atoi(parts[4])
+	desc := sortVal == 1
+
+	if action == "close" {
+		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Content:    "[+] Punishment history closed.",
+				Embeds:     nil,
+				Components: []discordgo.MessageComponent{},
+			},
+		})
+		return
+	}
+
+	gid := i.GuildID
+	list, err := mgr.DB().ListCases(gid, targetID)
+	if err != nil || len(list) == 0 {
+		return
+	}
+
+	targetName := targetID
+	if targetUser, err := s.User(targetID); err == nil && targetUser != nil {
+		targetName = targetUser.Username
+	}
+
+	authorName := i.Member.User.Username
+	authorAvatar := i.Member.User.AvatarURL("64")
+
+	emb, comps := buildHistoryResponse(s, targetName, authorName, authorAvatar, list, page, desc)
+
+	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{emb},
+			Components: comps,
+		},
+	})
 }

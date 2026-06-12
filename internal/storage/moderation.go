@@ -91,7 +91,7 @@ func (d *DB) ListCases(gid, uid string) ([]Case, error) {
 		}
 		return gbkt.ForEach(func(_, v []byte) error {
 			var entry Case
-			if json.Unmarshal(v, &entry) == nil && entry.UserID == uid {
+			if json.Unmarshal(v, &entry) == nil && (uid == "" || entry.UserID == uid) {
 				out = append(out, entry)
 			}
 			return nil

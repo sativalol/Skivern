@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	bolt "go.etcd.io/bbolt"
 	"skyvern/internal/config"
+	"skyvern/internal/lavalink"
 	"skyvern/internal/storage"
 )
 
@@ -20,6 +22,7 @@ type instState struct {
 	session  *discordgo.Session
 	clientID string
 	running  bool
+	lavalink *lavalink.Client
 }
 
 type tracker struct {
@@ -210,10 +213,30 @@ func (m *Manager) Start(clientID string) error {
 	if err != nil {
 		return fmt.Errorf("discordgo init: %w", err)
 	}
-	sess.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsGuilds | discordgo.IntentMessageContent | discordgo.IntentsGuildMembers | discordgo.IntentsGuildMessageReactions
+	sess.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsGuilds | discordgo.IntentMessageContent | discordgo.IntentsGuildMembers | discordgo.IntentsGuildMessageReactions | discordgo.IntentsGuildVoiceStates
 	sess.State.MaxMessageCount = 1000
 
-	state := &instState{cfg: cfg, session: sess, clientID: clientID}
+	host := config.GetGlobal().LavalinkHost
+	if host == "" {
+		host = os.Getenv("LAVALINK_HOST")
+		if host == "" {
+			host = "localhost:2333"
+		}
+	}
+	pass := config.GetGlobal().LavalinkPass
+	if pass == "" {
+		pass = os.Getenv("LAVALINK_PASS")
+		if pass == "" {
+			pass = "youshallnotpass"
+		}
+	}
+
+	state := &instState{
+		cfg:      cfg,
+		session:  sess,
+		clientID: clientID,
+		lavalink: lavalink.NewClient(host, pass, clientID, sess),
+	}
 	m.instances[clientID] = state
 	m.attachHandlers(sess, state)
 
@@ -229,7 +252,73 @@ func (m *Manager) Start(clientID string) error {
 	}
 
 	m.stats.setGuilds(clientID, len(sess.State.Guilds))
+	go m.UploadVoiceMasterEmojis(sess)
 	return nil
+}
+
+func (m *Manager) UploadVoiceMasterEmojis(s *discordgo.Session) {
+	emojiServerID := config.GetGlobal().EmojiServerID
+	if emojiServerID == "" {
+		emojiServerID = "1411452931915645032"
+	}
+
+	_, err := s.Guild(emojiServerID)
+	if err != nil {
+		fmt.Printf("[EmojiLoader] Bot is not in the home emoji server %s: %v\n", emojiServerID, err)
+		return
+	}
+
+	emojis, err := s.GuildEmojis(emojiServerID)
+	if err != nil {
+		fmt.Printf("[EmojiLoader] Failed to fetch guild emojis from %s: %v\n", emojiServerID, err)
+		return
+	}
+
+	emojiMap := make(map[string]bool)
+	for _, e := range emojis {
+		emojiMap[e.Name] = true
+	}
+
+	dir := "internal/assets/vc-icons"
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Printf("[EmojiLoader] Failed to read vc-icons directory: %v\n", err)
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".png") {
+			continue
+		}
+
+		baseName := strings.TrimSuffix(entry.Name(), ".png")
+		emojiName := "vm_" + strings.ReplaceAll(baseName, "-", "_")
+
+		if emojiMap[emojiName] {
+			continue
+		}
+
+		filePath := fmt.Sprintf("%s/%s", dir, entry.Name())
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			fmt.Printf("[EmojiLoader] Failed to read emoji file %s: %v\n", filePath, err)
+			continue
+		}
+
+		contentType := http.DetectContentType(data)
+		b64 := base64.StdEncoding.EncodeToString(data)
+		imageURI := fmt.Sprintf("data:%s;base64,%s", contentType, b64)
+
+		_, err = s.GuildEmojiCreate(emojiServerID, &discordgo.EmojiParams{
+			Name:  emojiName,
+			Image: imageURI,
+		})
+		if err != nil {
+			fmt.Printf("[EmojiLoader] Failed to upload emoji %s to guild %s: %v\n", emojiName, emojiServerID, err)
+		} else {
+			fmt.Printf("[EmojiLoader] Successfully uploaded emoji %s to guild %s\n", emojiName, emojiServerID)
+		}
+	}
 }
 
 func (m *Manager) Stop(clientID string) error {
@@ -239,6 +328,9 @@ func (m *Manager) Stop(clientID string) error {
 	s, ok := m.instances[clientID]
 	if !ok || !s.running {
 		return nil
+	}
+	if s.lavalink != nil {
+		s.lavalink.Close()
 	}
 	if err := s.session.Close(); err != nil {
 		return fmt.Errorf("session close: %w", err)
@@ -448,6 +540,14 @@ func (m *Manager) DeleteSchedule(gid, id string) error {
 			m.schedules = append(m.schedules[:i], m.schedules[i+1:]...)
 			break
 		}
+	}
+	return nil
+}
+func (m *Manager) GetLavalink(clientID string) *lavalink.Client {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if s, ok := m.instances[clientID]; ok {
+		return s.lavalink
 	}
 	return nil
 }

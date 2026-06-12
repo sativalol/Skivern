@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"skyvern/internal/config"
+	"skyvern/internal/lavalink"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -127,6 +128,14 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 			showLStr = "yes"
 		}
 		setLines = append(setLines, fmt.Sprintf("  Show Embed Logo:   %s", showLStr))
+		autoStartStr := "no"
+		if g.AutoStartLavalink {
+			autoStartStr = "yes"
+		}
+		setLines = append(setLines, fmt.Sprintf("  Auto Start Lavalink: %s", autoStartStr))
+		setLines = append(setLines, fmt.Sprintf("  Lavalink Host:     %s", g.LavalinkHost))
+		setLines = append(setLines, fmt.Sprintf("  Lavalink Password: %s", g.LavalinkPass))
+		setLines = append(setLines, fmt.Sprintf("  Home Emoji Server: %s", g.EmojiServerID))
 		setLines = append(setLines, fmt.Sprintf("  TUI Theme:         %s", th.Name))
 		setLines = append(setLines, "", "  Press [E] to edit global settings.")
 
@@ -158,6 +167,66 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 			mainInnerWidth = 20
 		}
 		return boxStyle.Width(mainInnerWidth).Render(strings.Join(setLines, "\n"))
+	}
+
+	if m.tab == 3 {
+		var lavLines []string
+		lavLines = append(lavLines, titleStyle.Render("LAVALINK NODES & CONNECTION LOGS"))
+		lavLines = append(lavLines, "")
+
+		if len(m.bots) == 0 || m.selIdx >= len(m.bots) {
+			lavLines = append(lavLines, "  No bot configured.")
+		} else {
+			b := m.bots[m.selIdx]
+			l := m.mgr.GetLavalink(b.ClientID)
+			if l == nil || !m.mgr.IsRunning(b.ClientID) {
+				lavLines = append(lavLines, "  Bot instance is not running.")
+			} else {
+				sessID := l.SessID()
+				if sessID == "" {
+					sessID = "None (Connecting...)"
+				}
+				lavLines = append(lavLines, fmt.Sprintf("  Active Session ID: %s", sessID))
+				lavLines = append(lavLines, "")
+				lavLines = append(lavLines, "  Node Pool:")
+				var nodes []lavalink.NodeInfo = l.GetNodes()
+				for _, n := range nodes {
+					mark := " "
+					if n.Active {
+						mark = "*"
+					}
+					lavLines = append(lavLines, fmt.Sprintf("    [%s] %s", mark, n.Host))
+				}
+				lavLines = append(lavLines, "")
+				lavLines = append(lavLines, "  Connection Logs:")
+				logs := l.GetLogs()
+				if len(logs) == 0 {
+					lavLines = append(lavLines, "    (No connection logs yet)")
+				} else {
+					maxLogs := contentHeight - len(l.GetNodes()) - 9
+					if maxLogs < 3 {
+						maxLogs = 3
+					}
+					start := len(logs) - maxLogs
+					if start < 0 {
+						start = 0
+					}
+					for i := start; i < len(logs); i++ {
+						lavLines = append(lavLines, "    "+logs[i])
+					}
+				}
+			}
+		}
+
+		mainInnerWidth := mainWidth - 4
+		if mainInnerWidth < 20 {
+			mainInnerWidth = 20
+		}
+		mainInnerHeight := contentHeight - 2
+		if mainInnerHeight < 5 {
+			mainInnerHeight = 5
+		}
+		return boxStyle.Width(mainInnerWidth).Height(mainInnerHeight).Render(strings.Join(lavLines, "\n"))
 	}
 
 	showAnalytics := contentHeight >= 20

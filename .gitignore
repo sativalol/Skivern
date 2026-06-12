@@ -34,3 +34,12 @@ tui_config.json
 tests/
 docs/
 todo.txt
+
+# Lavalink local server files
+lavalink/Lavalink.jar
+lavalink/logs/
+lavalink/plugins/
+
+# References and vendor
+dischord_ref/
+vendor/

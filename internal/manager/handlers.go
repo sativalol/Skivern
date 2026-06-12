@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"encoding/json"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -156,9 +157,24 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 		}
 		cmd := m.findByTrigger(strings.ToLower(parts[0]))
 		if cmd == nil {
-			if tmpl, err := m.db.GetInvoke(msg.GuildID, parts[0]); err == nil && tmpl != "" {
+			var tmpl string
+			if msg.GuildID != "" {
+				tmpl, _ = m.db.GetInvoke(msg.GuildID, parts[0])
+			} else {
+				m.mu.RLock()
+				for _, g := range s.State.Guilds {
+					if t, e := m.db.GetInvoke(g.ID, parts[0]); e == nil && t != "" {
+						tmpl = t
+						break
+					}
+				}
+				m.mu.RUnlock()
+			}
+			if tmpl != "" {
 				resText := renderTemplate(tmpl, msg.Message, parts[1:])
-				_, _ = s.ChannelMessageSend(msg.ChannelID, resText)
+				if !trySendEmbed(s, msg.ChannelID, resText) {
+					_, _ = s.ChannelMessageSend(msg.ChannelID, resText)
+				}
 			}
 			return
 		}
@@ -272,6 +288,27 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 				return
 			}
 
+			m.mu.RLock()
+			handler, ok := m.compHandlers[id]
+			if !ok {
+				for k, fn := range m.compHandlers {
+					if strings.HasSuffix(k, "*") && strings.HasPrefix(id, strings.TrimSuffix(k, "*")) {
+						handler = fn
+						ok = true
+						break
+					}
+				}
+			}
+			m.mu.RUnlock()
+			if ok {
+				go handler(s, i)
+			}
+		}
+	})
+
+	sess.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if i.Type == discordgo.InteractionModalSubmit {
+			id := i.ModalSubmitData().CustomID
 			m.mu.RLock()
 			handler, ok := m.compHandlers[id]
 			if !ok {
@@ -440,6 +477,11 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.VoiceStateUpdate) {
 		go m.LogVoiceStateUpdate(s, e)
 		go m.handleVoiceStateUpdate(s, e)
+		if e.UserID == s.State.User.ID {
+			if l := m.GetLavalink(state.clientID); l != nil {
+				l.HandleVoiceState(e.GuildID, e.SessionID, e.ChannelID)
+			}
+		}
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.PresenceUpdate) {
@@ -537,6 +579,12 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.GuildEmojisUpdate) {
 		safeGo(func() { m.LogGuildEmojisUpdate(s, e) })
+	})
+
+	sess.AddHandler(func(s *discordgo.Session, e *discordgo.VoiceServerUpdate) {
+		if l := m.GetLavalink(state.clientID); l != nil {
+			l.HandleVoiceServer(e.GuildID, e.Token, e.Endpoint)
+		}
 	})
 }
 
@@ -735,14 +783,64 @@ func (m *Manager) handleVoiceStateUpdate(s *discordgo.Session, e *discordgo.Voic
 		mName := "Temp VC"
 		mInfo, err := s.GuildMember(e.GuildID, e.UserID)
 		if err == nil && mInfo.User != nil {
-			mName = fmt.Sprintf("%s's Channel", mInfo.User.Username)
+			displayName := mInfo.User.Username
+			if mInfo.User.GlobalName != "" {
+				displayName = mInfo.User.GlobalName
+			}
+			if mInfo.Nick != "" {
+				displayName = mInfo.Nick
+			}
+
+			isBad := m.IsFiltered(e.GuildID, mInfo.User.Username) ||
+				(mInfo.User.GlobalName != "" && m.IsFiltered(e.GuildID, mInfo.User.GlobalName)) ||
+				(mInfo.Nick != "" && m.IsFiltered(e.GuildID, mInfo.Nick))
+
+			if isBad {
+				mName = "Censored Room"
+			} else {
+				mName = fmt.Sprintf("%s's Channel", displayName)
+			}
 		}
 
 		newCh, err := s.GuildChannelCreateComplex(e.GuildID, discordgo.GuildChannelCreateData{
 			Name:     mName,
 			Type:     discordgo.ChannelTypeGuildVoice,
 			ParentID: cfg.CategoryID,
+			PermissionOverwrites: []*discordgo.PermissionOverwrite{
+				{
+					ID:    e.GuildID,
+					Type:  discordgo.PermissionOverwriteTypeRole,
+					Allow: discordgo.PermissionViewChannel,
+				},
+				{
+					ID:    e.UserID,
+					Type:  discordgo.PermissionOverwriteTypeMember,
+					Allow: discordgo.PermissionManageChannels | discordgo.PermissionVoiceMoveMembers | discordgo.PermissionVoiceMuteMembers | discordgo.PermissionVoiceDeafenMembers | discordgo.PermissionVoiceConnect,
+				},
+			},
 		})
+
+		// If first try failed (e.g. Discord filter rejected the name), retry with Censored Room
+		if err != nil && mName != "Censored Room" {
+			newCh, err = s.GuildChannelCreateComplex(e.GuildID, discordgo.GuildChannelCreateData{
+				Name:     "Censored Room",
+				Type:     discordgo.ChannelTypeGuildVoice,
+				ParentID: cfg.CategoryID,
+				PermissionOverwrites: []*discordgo.PermissionOverwrite{
+					{
+						ID:    e.GuildID,
+						Type:  discordgo.PermissionOverwriteTypeRole,
+						Allow: discordgo.PermissionViewChannel,
+					},
+					{
+						ID:    e.UserID,
+						Type:  discordgo.PermissionOverwriteTypeMember,
+						Allow: discordgo.PermissionManageChannels | discordgo.PermissionVoiceMoveMembers | discordgo.PermissionVoiceMuteMembers | discordgo.PermissionVoiceDeafenMembers | discordgo.PermissionVoiceConnect,
+					},
+				},
+			})
+		}
+
 		if err == nil {
 			_ = m.db.SaveTempVoiceChan(newCh.ID, e.UserID)
 			_ = s.GuildMemberMove(e.GuildID, e.UserID, &newCh.ID)
@@ -883,4 +981,69 @@ func (m *Manager) postToStarboard(s *discordgo.Session, targetChanID string, msg
 			_ = m.db.SaveStarboardMsg(msg.ID, newMsg.ID)
 		}
 	}
+}
+
+func trySendEmbed(s *discordgo.Session, chanID, text string) bool {
+	text = strings.TrimSpace(text)
+	if !strings.HasPrefix(text, "{") || !strings.HasSuffix(text, "}") {
+		return false
+	}
+
+	var payload struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Color       int    `json:"color"`
+		Thumbnail   string `json:"thumbnail"`
+		Image       string `json:"image"`
+		Footer      struct {
+			Text string `json:"text"`
+			Icon string `json:"icon"`
+		} `json:"footer"`
+		Fields []struct {
+			Name   string `json:"name"`
+			Value  string `json:"value"`
+			Inline bool   `json:"inline"`
+		} `json:"fields"`
+	}
+
+	if err := json.Unmarshal([]byte(text), &payload); err != nil {
+		return false
+	}
+
+	if payload.Title == "" && payload.Description == "" && len(payload.Fields) == 0 {
+		return false
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       payload.Title,
+		Description: payload.Description,
+		Color:       payload.Color,
+	}
+
+	if payload.Color == 0 {
+		embed.Color = 0x808080
+	}
+
+	if payload.Thumbnail != "" {
+		embed.Thumbnail = &discordgo.MessageEmbedThumbnail{URL: payload.Thumbnail}
+	}
+	if payload.Image != "" {
+		embed.Image = &discordgo.MessageEmbedImage{URL: payload.Image}
+	}
+	if payload.Footer.Text != "" {
+		embed.Footer = &discordgo.MessageEmbedFooter{
+			Text:    payload.Footer.Text,
+			IconURL: payload.Footer.Icon,
+		}
+	}
+	for _, f := range payload.Fields {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   f.Name,
+			Value:  f.Value,
+			Inline: f.Inline,
+		})
+	}
+
+	_, err := s.ChannelMessageSendEmbed(chanID, embed)
+	return err == nil
 }

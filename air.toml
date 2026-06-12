@@ -2,8 +2,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  bin = "tmp\\main.exe"
-  cmd = "go build -o tmp\\main.exe main.go"
+  bin = "tmp\\skyvern.exe"
+  cmd = "go build -o tmp\\skyvern.exe main.go"
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor"]
   exclude_file = []

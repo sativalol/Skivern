@@ -2,15 +2,18 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
 	"skyvern/internal/commands"
 	"skyvern/internal/config"
 	"skyvern/internal/manager"
+	"skyvern/internal/lavalink"
 	"skyvern/internal/plugins"
 	_ "skyvern/internal/plugins/fun"
 	"skyvern/internal/storage"
+	"strings"
 	"skyvern/pkg/tui"
 	"syscall"
 	"time"
@@ -48,6 +51,32 @@ func main() {
 	if g, err := db.GetGlobal(); err == nil {
 		config.SetGlobal(g)
 	}
+
+	g := config.GetGlobal()
+	isLocal := g.LavalinkHost == "" || strings.Contains(g.LavalinkHost, "localhost") || strings.Contains(g.LavalinkHost, "127.0.0.1")
+	if g.AutoStartLavalink && isLocal {
+		lavalink.StartServer(config.ResolvePath)
+		fmt.Print("  Waiting for local Lavalink server to start...")
+		start := time.Now()
+		client := &http.Client{Timeout: 500 * time.Millisecond}
+		for time.Since(start) < 25*time.Second {
+			req, err := http.NewRequest("GET", "http://localhost:2333/version", nil)
+			if err == nil {
+				req.Header.Set("Authorization", g.LavalinkPass)
+				resp, err := client.Do(req)
+				if err == nil {
+					resp.Body.Close()
+					if resp.StatusCode == http.StatusOK {
+						break
+					}
+				}
+			}
+			fmt.Print(".")
+			time.Sleep(1 * time.Second)
+		}
+		fmt.Println(" Done!")
+	}
+	defer lavalink.StopServer()
 
 	mgr := manager.New(db, commands.Registry)
 	defer mgr.Close()
