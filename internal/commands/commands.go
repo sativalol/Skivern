@@ -123,6 +123,8 @@ var Registry = []*manager.Command{
 	utility.ImgOnly,
 	utility.Alias,
 	utility.StickyMessage,
+	utility.ScrapeCmd,
+	utility.AskCmd,
 
 
 	fun.Define,

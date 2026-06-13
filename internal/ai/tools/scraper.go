@@ -35,9 +35,17 @@ var (
 	reTitle   = regexp.MustCompile(`(?i)<title[^>]*>([\s\S]*?)<\/title>`)
 	reMeta    = regexp.MustCompile(`(?i)<meta\s+([^>]*?)>`)
 	reLink    = regexp.MustCompile(`(?i)<a\s+[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>`)
-	reScripts = regexp.MustCompile(`(?i)<(script|style|noscript|svg|iframe|head)[^>]*>([\s\S]*?)<\/\1>`)
 	reTags    = regexp.MustCompile(`<[^>]+>`)
 	reSpacing = regexp.MustCompile(`\n{3,}`)
+
+	reCleanList = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)<script[^>]*>([\s\S]*?)<\/script>`),
+		regexp.MustCompile(`(?i)<style[^>]*>([\s\S]*?)<\/style>`),
+		regexp.MustCompile(`(?i)<noscript[^>]*>([\s\S]*?)<\/noscript>`),
+		regexp.MustCompile(`(?i)<svg[^>]*>([\s\S]*?)<\/svg>`),
+		regexp.MustCompile(`(?i)<iframe[^>]*>([\s\S]*?)<\/iframe>`),
+		regexp.MustCompile(`(?i)<head[^>]*>([\s\S]*?)<\/head>`),
+	}
 )
 
 func Scrape(url string) (*ScrapeResult, error) {
@@ -124,7 +132,10 @@ func ScrapeWithOptions(u string, opts ScrapeOpts) (*ScrapeResult, error) {
 		}
 	}
 
-	txt := reScripts.ReplaceAllString(html, " ")
+	txt := html
+	for _, re := range reCleanList {
+		txt = re.ReplaceAllString(txt, " ")
+	}
 	reBlocks := regexp.MustCompile(`(?i)</?(div|p|h[1-6]|li|tr|article|section|header|footer)[^>]*>`)
 	txt = reBlocks.ReplaceAllString(txt, "\n")
 	txt = reTags.ReplaceAllString(txt, "")

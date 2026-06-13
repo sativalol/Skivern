@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -83,6 +84,71 @@ func (ctx *CommandContext) AuthorTag() string {
 func (ctx *CommandContext) Reply(text string) error {
 	return ctx.Respond(config.Wrap(ctx.Cfg, text))
 }
+
+func (ctx *CommandContext) ReplyLarge(text string, filename ...string) error {
+	fname := "output.txt"
+	if len(filename) > 0 && filename[0] != "" {
+		fname = filename[0]
+	}
+
+	if len(text) <= 1900 {
+		return ctx.Reply(text)
+	}
+
+	if len(text) > 8000 {
+		sr := strings.NewReader(text)
+		ms := &discordgo.MessageSend{
+			Content: "[*] Output too large, sent as file:",
+			Files: []*discordgo.File{
+				{
+					Name:   fname,
+					Reader: sr,
+				},
+			},
+		}
+		if ctx.Interact != nil {
+			return ctx.Session.InteractionRespond(ctx.Interact, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: ms.Content,
+					Files:   ms.Files,
+				},
+			})
+		}
+		_, err := ctx.Session.ChannelMessageSendComplex(ctx.ChanID(), ms)
+		return err
+	}
+
+	lines := strings.Split(text, "\n")
+	var chunk strings.Builder
+	for _, line := range lines {
+		if chunk.Len()+len(line)+1 > 1900 {
+			if chunk.Len() > 0 {
+				err := ctx.Reply(chunk.String())
+				if err != nil {
+					return err
+				}
+				chunk.Reset()
+			}
+			for len(line) > 1900 {
+				err := ctx.Reply(line[:1900])
+				if err != nil {
+					return err
+				}
+				line = line[1900:]
+			}
+		}
+		if chunk.Len() > 0 {
+			chunk.WriteByte('\n')
+		}
+		chunk.WriteString(line)
+	}
+	if chunk.Len() > 0 {
+		return ctx.Reply(chunk.String())
+	}
+	return nil
+}
+
 
 func (ctx *CommandContext) Ban(uid, reason string, days int) error {
 	auditReason := fmt.Sprintf("Forced by %s (%s) | Reason: %s", ctx.AuthorTag(), ctx.AuthorID(), reason)
