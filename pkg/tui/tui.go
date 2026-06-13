@@ -173,6 +173,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.focusInput(m.focus - 1)
 			case "down", "tab":
 				m.focusInput(m.focus + 1)
+			case "left", "right":
+				if m.tab == 4 && (m.focus == 1 || m.focus == 5) {
+					isRight := msg.String() == "right"
+					if m.focus == 1 {
+						curVal := m.inputs[1].Value()
+						newVal := cycleString(curVal, aiProviderTypes, isRight)
+						m.inputs[1].SetValue(newVal)
+						if models, ok := aiModels[newVal]; ok && len(models) > 0 {
+							m.inputs[5].SetValue(models[0])
+						}
+					} else if m.focus == 5 {
+						pType := strings.TrimSpace(strings.ToLower(m.inputs[1].Value()))
+						if pType == "" {
+							pType = "openai"
+						}
+						if models, ok := aiModels[pType]; ok {
+							curVal := m.inputs[5].Value()
+							newVal := cycleString(curVal, models, isRight)
+							m.inputs[5].SetValue(newVal)
+						}
+					}
+					return m, nil
+				}
+				var cmd tea.Cmd
+				m.inputs[m.focus], cmd = m.inputs[m.focus].Update(msg)
+				cmds = append(cmds, cmd)
 			default:
 				var cmd tea.Cmd
 				m.inputs[m.focus], cmd = m.inputs[m.focus].Update(msg)

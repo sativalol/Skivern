@@ -148,3 +148,54 @@ func (m *Model) saveAISettings() {
 	_ = m.db.SaveAIProvider(prov)
 	m.reload()
 }
+
+var aiProviderTypes = []string{
+	"openai",
+	"anthropic",
+	"deepseek",
+	"openrouter",
+	"groq",
+	"mistral",
+	"perplexity",
+	"gemini",
+	"cohere",
+	"ollama",
+}
+
+var aiModels = map[string][]string{
+	"openai":     {"gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "o1-mini", "o1-preview"},
+	"anthropic":  {"claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"},
+	"deepseek":   {"deepseek-chat", "deepseek-reasoner"},
+	"openrouter": {"google/gemini-2.5-flash", "google/gemini-2.5-pro", "meta-llama/llama-3.3-70b-instruct", "anthropic/claude-3.5-sonnet"},
+	"groq":       {"llama-3.3-70b-versatile", "llama3-70b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"},
+	"mistral":    {"mistral-small-latest", "mistral-medium-latest", "mistral-large-latest", "open-mistral-7b"},
+	"perplexity": {"sonar-reasoning", "sonar", "llama-3.1-sonar-large-128k-online"},
+	"gemini":     {"gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"},
+	"cohere":     {"command-r-plus", "command-r", "command-light"},
+	"ollama":     {"llama3", "mistral", "phi3", "gemma"},
+}
+
+func cycleString(cur string, choices []string, next bool) string {
+	if len(choices) == 0 {
+		return cur
+	}
+	idx := -1
+	for i, c := range choices {
+		if strings.ToLower(c) == strings.ToLower(cur) {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		if next {
+			return choices[0]
+		}
+		return choices[len(choices)-1]
+	}
+	if next {
+		idx = (idx + 1) % len(choices)
+	} else {
+		idx = (idx - 1 + len(choices)) % len(choices)
+	}
+	return choices[idx]
+}

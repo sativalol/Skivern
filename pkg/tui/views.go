@@ -82,7 +82,15 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 				fLines = append(fLines, fmt.Sprintf("%s  %s", label, val))
 			}
 		}
-		fLines = append(fLines, "", "  [Tab] Navigate  |  [Enter] Save/Next  |  [Esc] Cancel")
+		helpMsg := "  [Tab] Navigate  |  [Enter] Save/Next  |  [Esc] Cancel"
+		if m.tab == 4 {
+			if m.focus == 1 {
+				helpMsg += "  |  [←/→] Cycle Types"
+			} else if m.focus == 5 {
+				helpMsg += "  |  [←/→] Cycle Models"
+			}
+		}
+		fLines = append(fLines, "", helpMsg)
 
 		mainInnerWidth := calcMainInnerWidth(mainWidth)
 		return boxFocusStyle.Width(mainInnerWidth).Render(strings.Join(fLines, "\n"))
