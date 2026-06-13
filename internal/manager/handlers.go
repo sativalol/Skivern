@@ -77,10 +77,21 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 		}
 
 		matchedPrefix := ""
+		mentionPrefix := ""
+		mentionNickPrefix := ""
+		if s.State.User != nil {
+			mentionPrefix = "<@" + s.State.User.ID + ">"
+			mentionNickPrefix = "<@!" + s.State.User.ID + ">"
+		}
+
 		if personalPrefix != "" && strings.HasPrefix(msg.Content, personalPrefix) {
 			matchedPrefix = personalPrefix
 		} else if strings.HasPrefix(msg.Content, prefix) {
 			matchedPrefix = prefix
+		} else if mentionPrefix != "" && strings.HasPrefix(msg.Content, mentionPrefix) {
+			matchedPrefix = mentionPrefix
+		} else if mentionNickPrefix != "" && strings.HasPrefix(msg.Content, mentionNickPrefix) {
+			matchedPrefix = mentionNickPrefix
 		}
 
 		isAFKCmd := false
@@ -245,6 +256,9 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 		}
 		parts := strings.Fields(strings.TrimPrefix(msg.Content, matchedPrefix))
 		if len(parts) == 0 {
+			if s.State.User != nil && (matchedPrefix == "<@"+s.State.User.ID+">" || matchedPrefix == "<@!"+s.State.User.ID+">") {
+				_, _ = s.ChannelMessageSend(msg.ChannelID, fmt.Sprintf("My prefix in this server is `%s`", prefix))
+			}
 			return
 		}
 
