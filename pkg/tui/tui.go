@@ -192,7 +192,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "down", "tab":
 				m.focusInput(m.focus + 1)
 			case "left", "right":
-				if m.tab == 4 && (m.focus == 1 || m.focus == 5) {
+				if m.tab == 4 && (m.focus == 1 || m.focus == 5) && len(m.inputs) > 5 && m.inputs[0].Placeholder != "Prompt ID/Name" {
 					isRight := msg.String() == "right"
 					if m.focus == 1 {
 						curVal := m.inputs[1].Value()
