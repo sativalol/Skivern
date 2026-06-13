@@ -3,16 +3,12 @@ package tools
 import (
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
-	"net/url"
-	"os"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
-	"skyvern/internal/config"
+	"skyvern/internal/spoofer"
 )
 
 type ScrapeResult struct {
@@ -33,62 +29,6 @@ type ScrapeOpts struct {
 	ProxyURL  string
 	UserAgent string
 	Timeout   time.Duration
-}
-
-var userAgents = []string{
-	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-	"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
-	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
-	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-}
-
-var (
-	proxyPool     []string
-	socks4Proxies []string
-	socks5Proxies []string
-	proxiesLoaded bool
-	proxyMu       sync.Mutex
-)
-
-func init() {
-	if p := os.Getenv("SKYVERN_PROXY_POOL"); p != "" {
-		for _, x := range strings.Split(p, ",") {
-			x = strings.TrimSpace(x)
-			if x != "" {
-				proxyPool = append(proxyPool, x)
-			}
-		}
-	}
-}
-
-func loadAssetProxies() {
-	proxyMu.Lock()
-	defer proxyMu.Unlock()
-	if proxiesLoaded {
-		return
-	}
-	proxiesLoaded = true
-
-	s5Path := config.ResolvePath("internal/assets/proxies/socks5.txt")
-	if b, err := os.ReadFile(s5Path); err == nil {
-		for _, line := range strings.Split(string(b), "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "#") {
-				socks5Proxies = append(socks5Proxies, "socks5://"+line)
-			}
-		}
-	}
-
-	s4Path := config.ResolvePath("internal/assets/proxies/socks4.txt")
-	if b, err := os.ReadFile(s4Path); err == nil {
-		for _, line := range strings.Split(string(b), "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "#") {
-				socks4Proxies = append(socks4Proxies, "socks4://"+line)
-			}
-		}
-	}
 }
 
 var (
@@ -114,18 +54,7 @@ func ScrapeWithOptions(u string, opts ScrapeOpts) (*ScrapeResult, error) {
 		return nil, err
 	}
 
-	ua := opts.UserAgent
-	if ua == "" {
-		ua = userAgents[rand.Intn(len(userAgents))]
-	}
-
-	req.Header.Set("User-Agent", ua)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
-	req.Header.Set("Sec-Fetch-Dest", "document")
-	req.Header.Set("Sec-Fetch-Mode", "navigate")
-	req.Header.Set("Sec-Fetch-Site", "none")
+	spoofer.SetHeaders(req, opts.UserAgent)
 
 	t := opts.Timeout
 	if t <= 0 {
@@ -136,26 +65,7 @@ func ScrapeWithOptions(u string, opts ScrapeOpts) (*ScrapeResult, error) {
 		Proxy: http.ProxyFromEnvironment,
 	}
 
-	pStr := opts.ProxyURL
-	if pStr == "" && len(proxyPool) > 0 {
-		pStr = proxyPool[rand.Intn(len(proxyPool))]
-	}
-
-	if pStr == "" {
-		loadAssetProxies()
-		var all []string
-		all = append(all, socks5Proxies...)
-		all = append(all, socks4Proxies...)
-		if len(all) > 0 {
-			pStr = all[rand.Intn(len(all))]
-		}
-	}
-
-	if pStr != "" {
-		if pURL, err := url.Parse(pStr); err == nil {
-			trans.Proxy = http.ProxyURL(pURL)
-		}
-	}
+	spoofer.SetupTransport(trans, opts.ProxyURL)
 
 	cli := &http.Client{
 		Timeout:   t,
