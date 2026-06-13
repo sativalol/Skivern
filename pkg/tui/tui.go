@@ -161,7 +161,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else if m.tab == 2 {
 						m.savePalantirSettings()
 					} else if m.tab == 4 {
-						m.saveAISettings()
+						if len(m.inputs) > 0 && m.inputs[0].Placeholder == "Default System Prompt" {
+							m.savePromptSettings()
+						} else {
+							m.saveAISettings()
+						}
 					} else {
 						m.saveEdit()
 					}
@@ -264,6 +268,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.bots[m.selIdx].ClientID != "" {
 					m.focusInput(1)
 				}
+			}
+		case "p":
+			if m.tab == 4 {
+				m.editing = true
+				m.initPromptInputs()
 			}
 		case "s":
 			if m.tab == 0 && len(m.bots) > 0 {

@@ -125,6 +125,7 @@ var Registry = []*manager.Command{
 	utility.StickyMessage,
 	utility.ScrapeCmd,
 	utility.AskCmd,
+	utility.PromptCmd,
 
 
 	fun.Define,

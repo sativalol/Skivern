@@ -93,7 +93,7 @@ func (m Model) renderAIPanel(mainWidth, contentHeight int, th Theme) string {
 		aiLines = append(aiLines, fmt.Sprintf("  Max Requests Limit: %s", maxRStr))
 		aiLines = append(aiLines, fmt.Sprintf("  Total Requests:    %d", p.UsedRequests))
 
-		aiLines = append(aiLines, "", "  Press [N] to add a new provider, [E] to edit, or [X] to delete.")
+		aiLines = append(aiLines, "", "  [N] Add Provider | [E] Edit | [X] Delete | [P] Edit Default Prompt")
 	}
 
 	mainInnerWidth := calcMainInnerWidth(mainWidth)

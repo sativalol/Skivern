@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"skyvern/internal/ai"
 	"skyvern/internal/config"
 	"skyvern/internal/lavalink"
 	"skyvern/internal/storage"
@@ -334,4 +335,28 @@ func (m *Model) saveEdit() {
 	_ = m.mgr.UpdateInstance(b.ClientID)
 	m.reload()
 }
+
+func (m *Model) initPromptInputs() {
+	pMap, _ := ai.LoadPrompts()
+	var defPrompt string
+	if pMap != nil {
+		defPrompt = pMap["default"]
+	}
+	fields := []formField{
+		{"Default System Prompt", defPrompt, false},
+	}
+	th := Themes[curTheme]
+	m.inputs, m.focus = createFormInputs(fields, th.Accent, false, "")
+	m.inputs[0].Focus()
+}
+
+func (m *Model) savePromptSettings() {
+	pMap, _ := ai.LoadPrompts()
+	if pMap == nil {
+		pMap = make(map[string]string)
+	}
+	pMap["default"] = m.inputs[0].Value()
+	_ = ai.SavePrompts(pMap)
+}
+
 

@@ -12,7 +12,7 @@ func init() {
 		{
 			Command:     "Ask",
 			Syntax:      ".ask <prompt>",
-			Description: "Ask configured AI models a question or give them a prompt.",
+			Description: "Ask AI a question or give it a prompt.",
 		},
 	})
 }
@@ -21,7 +21,7 @@ var AskCmd = &manager.Command{
 	Trigger:     "ask",
 	Aliases:     []string{"ai", "gpt"},
 	Name:        "ask",
-	Description: "Generate content using configured AI models",
+	Description: "Generate content using AI",
 	Category:    "utility",
 	Execute: func(ctx *manager.CommandContext) error {
 		if len(ctx.Args) == 0 {
@@ -33,14 +33,32 @@ var AskCmd = &manager.Command{
 			return ctx.Reply("[!] No AI providers configured. Please set one up in the TUI Settings first.")
 		}
 
+		var sysMsg string
 		prompt := strings.Join(ctx.Args, " ")
-		_ = ctx.Reply("[*] Contacting AI provider, please wait...")
+
+		promptsMap, err := ai.LoadPrompts()
+		if err == nil {
+			if len(ctx.Args) >= 3 && strings.ToLower(ctx.Args[0]) == "-prompt" {
+				pName := strings.ToLower(ctx.Args[1])
+				if p, ok := promptsMap[pName]; ok {
+					sysMsg = p
+					prompt = strings.Join(ctx.Args[2:], " ")
+				} else {
+					return ctx.Reply(fmt.Sprintf("[!] Custom prompt `%s` not found.", pName))
+				}
+			} else {
+				sysMsg = promptsMap["default"]
+			}
+		}
+
+		_ = ctx.Reply("[*] Thinking, please wait...")
 
 		res, err := ai.Generate(ctx.DB, provs[0].ID, ai.GenOpts{
-			UserMsg: prompt,
+			UserMsg:   prompt,
+			SystemMsg: sysMsg,
 		})
 		if err != nil {
-			return ctx.Reply(fmt.Sprintf("[!] AI generation failed: %v", err))
+			return ctx.Reply(fmt.Sprintf("[!] failed: %v", err))
 		}
 
 		return ctx.ReplyLarge(res.Text, "ai_response.txt")
