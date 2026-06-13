@@ -9,7 +9,10 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
+
+	"skyvern/internal/config"
 )
 
 type ScrapeResult struct {
@@ -40,7 +43,13 @@ var userAgents = []string{
 	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 }
 
-var proxyPool []string
+var (
+	proxyPool     []string
+	socks4Proxies []string
+	socks5Proxies []string
+	proxiesLoaded bool
+	proxyMu       sync.Mutex
+)
 
 func init() {
 	if p := os.Getenv("SKYVERN_PROXY_POOL"); p != "" {
@@ -48,6 +57,35 @@ func init() {
 			x = strings.TrimSpace(x)
 			if x != "" {
 				proxyPool = append(proxyPool, x)
+			}
+		}
+	}
+}
+
+func loadAssetProxies() {
+	proxyMu.Lock()
+	defer proxyMu.Unlock()
+	if proxiesLoaded {
+		return
+	}
+	proxiesLoaded = true
+
+	s5Path := config.ResolvePath("internal/assets/proxies/socks5.txt")
+	if b, err := os.ReadFile(s5Path); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") {
+				socks5Proxies = append(socks5Proxies, "socks5://"+line)
+			}
+		}
+	}
+
+	s4Path := config.ResolvePath("internal/assets/proxies/socks4.txt")
+	if b, err := os.ReadFile(s4Path); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") {
+				socks4Proxies = append(socks4Proxies, "socks4://"+line)
 			}
 		}
 	}
@@ -101,6 +139,16 @@ func ScrapeWithOptions(u string, opts ScrapeOpts) (*ScrapeResult, error) {
 	pStr := opts.ProxyURL
 	if pStr == "" && len(proxyPool) > 0 {
 		pStr = proxyPool[rand.Intn(len(proxyPool))]
+	}
+
+	if pStr == "" {
+		loadAssetProxies()
+		var all []string
+		all = append(all, socks5Proxies...)
+		all = append(all, socks4Proxies...)
+		if len(all) > 0 {
+			pStr = all[rand.Intn(len(all))]
+		}
 	}
 
 	if pStr != "" {
