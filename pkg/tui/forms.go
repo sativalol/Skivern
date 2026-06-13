@@ -28,6 +28,7 @@ func createFormInputs(fields []formField, accent lipgloss.Color, lockFirst bool,
 		ti.SetValue(f.value)
 		ti.Prompt = " > "
 		ti.TextStyle = inputStyle
+		ti.Width = 45
 		if f.mask {
 			ti.EchoMode = textinput.EchoPassword
 			ti.EchoCharacter = '•'

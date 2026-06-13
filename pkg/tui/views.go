@@ -78,6 +78,8 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 				}
 				if val == "" {
 					val = lipgloss.NewStyle().Foreground(th.Subtle).Render("(default)")
+				} else if len(val) > 45 {
+					val = val[:42] + "..."
 				}
 				fLines = append(fLines, fmt.Sprintf("%s  %s", label, val))
 			}

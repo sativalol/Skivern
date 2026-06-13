@@ -98,6 +98,9 @@ func (m Model) renderAIPanel(mainWidth, contentHeight int, th Theme) string {
 					lines = append(lines, "    ...")
 					break
 				}
+				if len(sl) > 55 {
+					sl = sl[:52] + "..."
+				}
 				lines = append(lines, "    "+sl)
 			}
 			
@@ -108,6 +111,9 @@ func (m Model) renderAIPanel(mainWidth, contentHeight int, th Theme) string {
 					if i > 3 {
 						lines = append(lines, "    ...")
 						break
+					}
+					if len(ul) > 55 {
+						ul = ul[:52] + "..."
 					}
 					lines = append(lines, "    "+ul)
 				}

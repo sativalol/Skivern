@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"skyvern/internal/config"
 	"skyvern/internal/storage"
 )
@@ -63,11 +64,47 @@ func SyncPrompts(db *storage.DB) {
 		return
 	}
 
+	healed := false
+	for k, val := range jsonPrompts {
+		if len(k) > 50 || strings.Contains(k, " ") || k == "system_prompt" {
+			var mergedParts []string
+			if k != "system_prompt" {
+				mergedParts = append(mergedParts, k)
+			}
+			if val.SystemMsg != "" {
+				mergedParts = append(mergedParts, val.SystemMsg)
+			}
+			if val.UserTemplate != "" {
+				mergedParts = append(mergedParts, val.UserTemplate)
+			}
+
+			defaultPrompt := storage.AIPrompt{
+				Name:         "default",
+				SystemMsg:    strings.Join(mergedParts, "\n\n"),
+				Temperature:  0.7,
+				MaxTokens:    1200,
+			}
+
+			jsonPrompts = map[string]storage.AIPrompt{
+				"default": defaultPrompt,
+			}
+			_ = SavePrompts(jsonPrompts)
+			healed = true
+			break
+		}
+	}
+
 	dbPrompts, err := db.ListAIPrompts()
 	if err == nil {
-		for _, dbP := range dbPrompts {
-			if _, ok := jsonPrompts[dbP.Name]; !ok {
+		if healed {
+			for _, dbP := range dbPrompts {
 				_ = db.DeleteAIPrompt(dbP.Name)
+			}
+		} else {
+			for _, dbP := range dbPrompts {
+				if _, ok := jsonPrompts[dbP.Name]; !ok {
+					_ = db.DeleteAIPrompt(dbP.Name)
+				}
 			}
 		}
 	}
