@@ -147,7 +147,12 @@ func (m *Model) initInputs(b *config.BotInst) {
 
 	th := Themes[curTheme]
 	m.inputs, m.focus = createFormInputs(fields, th.Accent, b != nil, "Client ID (Locked)")
-	m.inputs[0].Focus()
+	if b != nil {
+		m.focus = 1
+		m.inputs[1].Focus()
+	} else {
+		m.inputs[0].Focus()
+	}
 }
 
 func (m *Model) initAIInputs(p *storage.AIProvider) {
@@ -183,7 +188,12 @@ func (m *Model) initAIInputs(p *storage.AIProvider) {
 
 	th := Themes[curTheme]
 	m.inputs, m.focus = createFormInputs(fields, th.Accent, p != nil, "Provider ID (Locked)")
-	m.inputs[0].Focus()
+	if p != nil {
+		m.focus = 1
+		m.inputs[1].Focus()
+	} else {
+		m.inputs[0].Focus()
+	}
 }
 
 func (m *Model) focusInput(idx int) {
@@ -192,6 +202,13 @@ func (m *Model) focusInput(idx int) {
 	}
 	if idx >= len(m.inputs) {
 		idx = 0
+	}
+	if idx == 0 && len(m.inputs) > 0 && strings.Contains(m.inputs[0].Placeholder, "(Locked)") {
+		if m.focus == 1 {
+			idx = len(m.inputs) - 1
+		} else {
+			idx = 1
+		}
 	}
 	m.inputs[m.focus].Blur()
 	m.focus = idx
