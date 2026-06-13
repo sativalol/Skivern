@@ -23,6 +23,23 @@ go run build.go
 ```
 This prints a menu to let you choose your target platform (Windows, macOS, Linux, Android) and automatically builds the binary with correct env configuration.
 
+#### Running on Android (Termux)
+If you built the binary for Android (Termux / arm64):
+1. Transfer the compiled `skyvern` binary to your Android device (e.g. into your `Download` folder).
+2. Open Termux on your device.
+3. Copy the binary to your Termux home directory:
+   ```bash
+   cp /where/you/saved/skyvern ~/skyvern
+   ```
+4. Make the binary executable:
+   ```bash
+   chmod +x ~/skyvern
+   ```
+5. Run Skyvern:
+   ```bash
+   ./skyvern
+   ```
+
 ---
 
 ## TUI Navigation
