@@ -36,19 +36,9 @@ var AskCmd = &manager.Command{
 		var sysMsg string
 		prompt := strings.Join(ctx.Args, " ")
 
-		promptsMap, err := ai.LoadPrompts()
+		pCfg, err := ai.LoadPrompts()
 		if err == nil {
-			if len(ctx.Args) >= 3 && strings.ToLower(ctx.Args[0]) == "-prompt" {
-				pName := strings.ToLower(ctx.Args[1])
-				if p, ok := promptsMap[pName]; ok {
-					sysMsg = p
-					prompt = strings.Join(ctx.Args[2:], " ")
-				} else {
-					return ctx.Reply(fmt.Sprintf("[!] Custom prompt `%s` not found.", pName))
-				}
-			} else {
-				sysMsg = promptsMap["default"]
-			}
+			sysMsg = pCfg.SystemPrompt
 		}
 
 		_ = ctx.Reply("[*] Thinking, please wait...")

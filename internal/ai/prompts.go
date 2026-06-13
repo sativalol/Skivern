@@ -7,32 +7,32 @@ import (
 	"skyvern/internal/config"
 )
 
+type PromptsConfig struct {
+	SystemPrompt string `json:"system_prompt"`
+}
+
 func GetPromptsPath() string {
 	return config.ResolvePath("internal/ai/prompts.json")
 }
 
-func LoadPrompts() (map[string]string, error) {
+func LoadPrompts() (PromptsConfig, error) {
+	var cfg PromptsConfig
 	p := GetPromptsPath()
 	b, err := os.ReadFile(p)
 	if err != nil {
-		return map[string]string{
-			"default": "You are a helpful AI assistant named Skyvern.",
-		}, nil
+		return PromptsConfig{SystemPrompt: "You are a helpful AI assistant."}, nil
 	}
-	var res map[string]string
-	err = json.Unmarshal(b, &res)
+	err = json.Unmarshal(b, &cfg)
 	if err != nil {
-		return map[string]string{
-			"default": "You are a helpful AI assistant named Skyvern.",
-		}, nil
+		return PromptsConfig{SystemPrompt: "You are a helpful AI assistant."}, nil
 	}
-	return res, nil
+	return cfg, nil
 }
 
-func SavePrompts(m map[string]string) error {
+func SavePrompts(cfg PromptsConfig) error {
 	p := GetPromptsPath()
 	_ = os.MkdirAll(filepath.Dir(p), 0755)
-	b, err := json.MarshalIndent(m, "", "  ")
+	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}

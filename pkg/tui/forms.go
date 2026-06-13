@@ -337,13 +337,9 @@ func (m *Model) saveEdit() {
 }
 
 func (m *Model) initPromptInputs() {
-	pMap, _ := ai.LoadPrompts()
-	var defPrompt string
-	if pMap != nil {
-		defPrompt = pMap["default"]
-	}
+	pCfg, _ := ai.LoadPrompts()
 	fields := []formField{
-		{"Default System Prompt", defPrompt, false},
+		{"Default System Prompt", pCfg.SystemPrompt, false},
 	}
 	th := Themes[curTheme]
 	m.inputs, m.focus = createFormInputs(fields, th.Accent, false, "")
@@ -351,12 +347,8 @@ func (m *Model) initPromptInputs() {
 }
 
 func (m *Model) savePromptSettings() {
-	pMap, _ := ai.LoadPrompts()
-	if pMap == nil {
-		pMap = make(map[string]string)
-	}
-	pMap["default"] = m.inputs[0].Value()
-	_ = ai.SavePrompts(pMap)
+	val := m.inputs[0].Value()
+	_ = ai.SavePrompts(ai.PromptsConfig{SystemPrompt: val})
 }
 
 
