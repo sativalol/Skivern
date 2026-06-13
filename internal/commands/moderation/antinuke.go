@@ -64,22 +64,22 @@ var Antinuke = &manager.Command{
 			if !isOwner(ctx) {
 				return ctx.Reply("[!] Only the server owner can modify antinuke settings.")
 			}
-			cfg, _ := ctx.DB.GetAntinukeCfg(gid)
+			cfg, _ := ctx.Mgr.GetAntinukeCfg(gid)
 			cfg.Enabled = true
-			_ = ctx.DB.SaveAntinukeCfg(gid, cfg)
+			_ = ctx.Mgr.SaveAntinukeCfg(gid, cfg)
 			return ctx.Reply("[+] Antinuke protection enabled.")
 
 		case "disable", "off":
 			if !isOwner(ctx) {
 				return ctx.Reply("[!] Only the server owner can modify antinuke settings.")
 			}
-			cfg, _ := ctx.DB.GetAntinukeCfg(gid)
+			cfg, _ := ctx.Mgr.GetAntinukeCfg(gid)
 			cfg.Enabled = false
-			_ = ctx.DB.SaveAntinukeCfg(gid, cfg)
+			_ = ctx.Mgr.SaveAntinukeCfg(gid, cfg)
 			return ctx.Reply("[-] Antinuke protection disabled.")
 
 		case "settings", "status", "config":
-			cfg, _ := ctx.DB.GetAntinukeCfg(gid)
+			cfg, _ := ctx.Mgr.GetAntinukeCfg(gid)
 			status := "Disabled"
 			if cfg.Enabled {
 				status = "Enabled"
@@ -116,7 +116,7 @@ var Antinuke = &manager.Command{
 			opt := strings.ToLower(ctx.Args[1])
 			val := ctx.Args[2]
 
-			cfg, _ := ctx.DB.GetAntinukeCfg(gid)
+			cfg, _ := ctx.Mgr.GetAntinukeCfg(gid)
 
 			if opt == "action" {
 				act := strings.ToLower(val)
@@ -124,7 +124,7 @@ var Antinuke = &manager.Command{
 					return ctx.Reply("[!] Action must be one of: strip, ban, kick.")
 				}
 				cfg.Action = act
-				_ = ctx.DB.SaveAntinukeCfg(gid, cfg)
+				_ = ctx.Mgr.SaveAntinukeCfg(gid, cfg)
 				return ctx.Reply(fmt.Sprintf("[+] Antinuke action set to `%s`.", act))
 			}
 
@@ -158,7 +158,7 @@ var Antinuke = &manager.Command{
 				return ctx.Reply("[!] Unknown option. Available options: chan_limit, chan_secs, role_limit, role_secs, ban_limit, ban_secs, kick_limit, kick_secs, bot_limit, bot_secs, action.")
 			}
 
-			_ = ctx.DB.SaveAntinukeCfg(gid, cfg)
+			_ = ctx.Mgr.SaveAntinukeCfg(gid, cfg)
 			return ctx.Reply(fmt.Sprintf("[+] Antinuke option `%s` set to `%d`.", opt, num))
 
 		case "list":

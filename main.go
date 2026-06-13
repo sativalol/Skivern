@@ -20,7 +20,6 @@ import (
 )
 
 func main() {
-	signal.Ignore(syscall.SIGHUP)
 	f := setupLogger()
 	defer f.Close()
 	defer func() {

@@ -144,7 +144,8 @@ const (
 )
 
 type TuiCfg struct {
-	Loc StorageLoc `json:"storage_location"`
+	Loc      StorageLoc `json:"storage_location"`
+	CryptKey string     `json:"crypt_key,omitempty"`
 }
 
 func GetTuiCfg() TuiCfg {

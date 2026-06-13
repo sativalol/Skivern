@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -26,8 +27,9 @@ type instState struct {
 }
 
 type tracker struct {
-	mu   sync.RWMutex
-	data map[string]*storage.Analytics
+	mu          sync.RWMutex
+	data        map[string]*storage.Analytics
+	lastFlushed map[string]storage.Analytics
 }
 
 func (t *tracker) get(id string) storage.Analytics {
@@ -118,6 +120,9 @@ type Manager struct {
 	prefixCache       map[string]string
 	palantirCache     storage.PalantirCfg
 	palantirCacheInit bool
+	regexCache        map[string][]*regexp.Regexp
+	antinukeCache     map[string]storage.AntinukeCfg
+	antiraidCache     map[string]storage.AntiraidCfg
 	configMu          sync.RWMutex
 
 	palantirChan chan *PalantirLog
@@ -145,6 +150,9 @@ func New(db *storage.DB, cmds []*Command) *Manager {
 		filterCache:           make(map[string]storage.FilterCfg),
 		antilinkCache:         make(map[string]storage.AntilinkCfg),
 		prefixCache:           make(map[string]string),
+		regexCache:            make(map[string][]*regexp.Regexp),
+		antinukeCache:         make(map[string]storage.AntinukeCfg),
+		antiraidCache:         make(map[string]storage.AntiraidCfg),
 		palantirChan:          make(chan *PalantirLog, 1000),
 		reminders:             rems,
 		schedules:             schs,

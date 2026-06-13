@@ -7,6 +7,7 @@ import (
 	"skyvern/internal/lavalink"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -14,46 +15,23 @@ func (m Model) renderSidebar(contentHeight, sidebarWidth int, th Theme) string {
 	titleStyle := lipgloss.NewStyle().Foreground(th.Accent).Bold(true).Underline(true)
 	boxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(th.Border).Padding(1)
 
-	sbInnerWidth := sidebarWidth - 4
-	sbInnerHeight := contentHeight - 2
-	if sbInnerWidth < 10 {
-		sbInnerWidth = 10
-	}
-	if sbInnerHeight < 5 {
-		sbInnerHeight = 5
-	}
+	sbInnerWidth, sbInnerHeight := calcInnerLimits(sidebarWidth, contentHeight)
 
 	var sbLines []string
 	if miniLogo != "" && sbInnerHeight > 15 {
 		sbLines = append(sbLines, lipgloss.NewStyle().Foreground(th.BorderFocus).Render(miniLogo))
 		sbLines = append(sbLines, "")
 	}
+
+	if m.tab == 4 {
+		return m.renderAISidebar(contentHeight, sidebarWidth, th)
+	}
+
 	sbLines = append(sbLines, titleStyle.Render("INSTANCES"))
 	sbLines = append(sbLines, "")
 
-	maxVisible := sbInnerHeight - 8
-	if miniLogo != "" && sbInnerHeight > 15 {
-		maxVisible = sbInnerHeight - 15
-	}
-	if maxVisible < 1 {
-		maxVisible = 1
-	}
-	startIdx := 0
-	endIdx := len(m.bots)
-	if len(m.bots) > maxVisible {
-		startIdx = m.selIdx - maxVisible/2
-		if startIdx < 0 {
-			startIdx = 0
-		}
-		endIdx = startIdx + maxVisible
-		if endIdx > len(m.bots) {
-			endIdx = len(m.bots)
-			startIdx = endIdx - maxVisible
-			if startIdx < 0 {
-				startIdx = 0
-			}
-		}
-	}
+	maxVisible := calcMaxVisible(sbInnerHeight)
+	startIdx, endIdx := calcVisibleRange(len(m.bots), m.selIdx, maxVisible)
 
 	for i := startIdx; i < endIdx; i++ {
 		b := m.bots[i]
@@ -95,6 +73,9 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 				fLines = append(fLines, fmt.Sprintf("%s %s", label, inp.View()))
 			} else {
 				val := inp.Value()
+				if inp.EchoMode == textinput.EchoPassword && val != "" {
+					val = strings.Repeat("•", len(val))
+				}
 				if val == "" {
 					val = lipgloss.NewStyle().Foreground(th.Subtle).Render("(default)")
 				}
@@ -103,10 +84,7 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 		}
 		fLines = append(fLines, "", "  [Tab] Navigate  |  [Enter] Save/Next  |  [Esc] Cancel")
 
-		mainInnerWidth := mainWidth - 4
-		if mainInnerWidth < 20 {
-			mainInnerWidth = 20
-		}
+		mainInnerWidth := calcMainInnerWidth(mainWidth)
 		return boxFocusStyle.Width(mainInnerWidth).Render(strings.Join(fLines, "\n"))
 	}
 
@@ -134,15 +112,16 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 		}
 		setLines = append(setLines, fmt.Sprintf("  Auto Start Lavalink: %s", autoStartStr))
 		setLines = append(setLines, fmt.Sprintf("  Lavalink Host:     %s", g.LavalinkHost))
-		setLines = append(setLines, fmt.Sprintf("  Lavalink Password: %s", g.LavalinkPass))
+		lavPassMasked := "(not set)"
+		if g.LavalinkPass != "" {
+			lavPassMasked = "••••••••"
+		}
+		setLines = append(setLines, fmt.Sprintf("  Lavalink Password: %s", lavPassMasked))
 		setLines = append(setLines, fmt.Sprintf("  Home Emoji Server: %s", g.EmojiServerID))
 		setLines = append(setLines, fmt.Sprintf("  TUI Theme:         %s", th.Name))
 		setLines = append(setLines, "", "  Press [E] to edit global settings.")
 
-		mainInnerWidth := mainWidth - 4
-		if mainInnerWidth < 20 {
-			mainInnerWidth = 20
-		}
+		mainInnerWidth := calcMainInnerWidth(mainWidth)
 		return boxStyle.Width(mainInnerWidth).Render(strings.Join(setLines, "\n"))
 	}
 
@@ -162,10 +141,7 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 		setLines = append(setLines, fmt.Sprintf("  Blocked Events:    %s", strings.Join(pCfg.BlockedEvents, ", ")))
 		setLines = append(setLines, "", "  Press [E] to edit Palantir settings.")
 
-		mainInnerWidth := mainWidth - 4
-		if mainInnerWidth < 20 {
-			mainInnerWidth = 20
-		}
+		mainInnerWidth := calcMainInnerWidth(mainWidth)
 		return boxStyle.Width(mainInnerWidth).Render(strings.Join(setLines, "\n"))
 	}
 
@@ -218,15 +194,16 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 			}
 		}
 
-		mainInnerWidth := mainWidth - 4
-		if mainInnerWidth < 20 {
-			mainInnerWidth = 20
-		}
+		mainInnerWidth := calcMainInnerWidth(mainWidth)
 		mainInnerHeight := contentHeight - 2
 		if mainInnerHeight < 5 {
 			mainInnerHeight = 5
 		}
 		return boxStyle.Width(mainInnerWidth).Height(mainInnerHeight).Render(strings.Join(lavLines, "\n"))
+	}
+
+	if m.tab == 4 {
+		return m.renderAIPanel(mainWidth, contentHeight, th)
 	}
 
 	showAnalytics := contentHeight >= 20
@@ -236,11 +213,8 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 	}
 	bottomRightHeight := contentHeight - topRightHeight
 
-	trInnerWidth := mainWidth - 4
+	trInnerWidth := calcMainInnerWidth(mainWidth)
 	trInnerHeight := topRightHeight - 2
-	if trInnerWidth < 20 {
-		trInnerWidth = 20
-	}
 	if trInnerHeight < 3 {
 		trInnerHeight = 3
 	}
@@ -342,11 +316,8 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 		sysMB := float64(mem.Sys) / 1024 / 1024
 		threads := runtime.NumGoroutine()
 
-		brInnerWidth := mainWidth - 4
+		brInnerWidth := calcMainInnerWidth(mainWidth)
 		brInnerHeight := bottomRightHeight - 2
-		if brInnerWidth < 20 {
-			brInnerWidth = 20
-		}
 		if brInnerHeight < 3 {
 			brInnerHeight = 3
 		}
@@ -377,3 +348,55 @@ func (m Model) renderMainPanel(mainWidth, contentHeight int, th Theme) string {
 	}
 	return topRight
 }
+
+func calcInnerLimits(width, height int) (int, int) {
+	w := width - 4
+	h := height - 2
+	if w < 10 {
+		w = 10
+	}
+	if h < 5 {
+		h = 5
+	}
+	return w, h
+}
+
+func calcMaxVisible(sbInnerHeight int) int {
+	max := sbInnerHeight - 8
+	if miniLogo != "" && sbInnerHeight > 15 {
+		max = sbInnerHeight - 15
+	}
+	if max < 1 {
+		max = 1
+	}
+	return max
+}
+
+func calcVisibleRange(total, selected, maxVisible int) (int, int) {
+	if total <= maxVisible {
+		return 0, total
+	}
+	start := selected - maxVisible/2
+	if start < 0 {
+		start = 0
+	}
+	end := start + maxVisible
+	if end > total {
+		end = total
+		start = end - maxVisible
+		if start < 0 {
+			start = 0
+		}
+	}
+	return start, end
+}
+
+func calcMainInnerWidth(mainWidth int) int {
+	w := mainWidth - 4
+	if w < 20 {
+		w = 20
+	}
+	return w
+}
+
+

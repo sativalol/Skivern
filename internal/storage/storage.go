@@ -59,6 +59,21 @@ var (
 	bktAntinukeCfg  = []byte("AntinukeCfg")
 	bktAntiraidCfg  = []byte("AntiraidCfg")
 	bktTouches      = []byte("Touches")
+	bktAIProviders  = []byte("AIProviders")
+	bktAIPrompts    = []byte("AIPrompts")
+	bktGuildSettings = []byte("GuildSettings")
+	bktAliases      = []byte("Aliases")
+	bktWelcomeMsgs  = []byte("WelcomeMsgs")
+	bktGoodbyeMsgs  = []byte("GoodbyeMsgs")
+	bktStickyMsgs   = []byte("StickyMsgs")
+	bktImgOnlyChans = []byte("ImgOnlyChans")
+	bktBoostMsgs    = []byte("BoostMsgs")
+	bktBoosterShares = []byte("BoosterShares")
+	bktBoosterFilters = []byte("BoosterFilters")
+	bktNotes             = []byte("Notes")
+	bktLockdownIgnores   = []byte("LockdownIgnores")
+	bktRestrictedCmds    = []byte("RestrictedCmds")
+	bktWatchedThreads    = []byte("WatchedThreads")
 
 	keyGlobal = []byte("cfg")
 )
@@ -99,6 +114,11 @@ func Open(path string) (*DB, error) {
 			bktTempVoiceCfg, bktTempVoiceChan, bktVanityCfg, bktVouches,
 			bktLoggerSubs, bktLoggerIgnores, bktAntispam, bktFilters, bktPalantirCfg, bktAntilink,
 			bktAntinukeCfg, bktAntiraidCfg, bktTouches,
+			bktAIProviders, bktAIPrompts,
+			bktGuildSettings, bktAliases, bktWelcomeMsgs, bktGoodbyeMsgs,
+			bktStickyMsgs, bktImgOnlyChans, bktBoostMsgs, bktBoosterShares,
+			bktBoosterFilters, bktNotes, bktLockdownIgnores, bktRestrictedCmds,
+			bktWatchedThreads,
 		} {
 			if _, err := tx.CreateBucketIfNotExists(name); err != nil {
 				return err
@@ -156,6 +176,11 @@ func (d *DB) GetBot(cid string) (config.BotInst, error) {
 		}
 		return json.Unmarshal(v, &inst)
 	})
+	if err == nil {
+		if decToken, decErr := decrypt(inst.Token); decErr == nil {
+			inst.Token = decToken
+		}
+	}
 	return inst, err
 }
 
@@ -167,6 +192,9 @@ func (d *DB) ListBots() ([]config.BotInst, error) {
 			if err := json.Unmarshal(v, &inst); err != nil {
 				return err
 			}
+			if decToken, decErr := decrypt(inst.Token); decErr == nil {
+				inst.Token = decToken
+			}
 			bots = append(bots, inst)
 			return nil
 		})
@@ -175,6 +203,11 @@ func (d *DB) ListBots() ([]config.BotInst, error) {
 }
 
 func (d *DB) SaveBot(inst config.BotInst) error {
+	encToken, err := encrypt(inst.Token)
+	if err != nil {
+		return err
+	}
+	inst.Token = encToken
 	return d.b.Update(func(tx *bolt.Tx) error {
 		return putJSON(tx.Bucket(bktBots), []byte(inst.ClientID), inst)
 	})

@@ -29,6 +29,31 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 		if msg.Author == nil || msg.Author.Bot {
 			return
 		}
+
+		// Image-only gallery check
+		if msg.GuildID != "" {
+			if exists, err := m.db.IsImgOnlyChannel(msg.GuildID, msg.ChannelID); err == nil && exists {
+				hasImg := false
+				if len(msg.Attachments) > 0 {
+					hasImg = true
+				} else {
+					lowerContent := strings.ToLower(msg.Content)
+					if strings.Contains(lowerContent, "http://") || strings.Contains(lowerContent, "https://") {
+						if strings.Contains(lowerContent, ".png") || strings.Contains(lowerContent, ".jpg") ||
+							strings.Contains(lowerContent, ".jpeg") || strings.Contains(lowerContent, ".gif") ||
+							strings.Contains(lowerContent, ".webp") || strings.Contains(lowerContent, "tenor.com") ||
+							strings.Contains(lowerContent, "giphy.com") || strings.Contains(lowerContent, "cdn.discordapp.com") {
+							hasImg = true
+						}
+					}
+				}
+				if !hasImg {
+					_ = s.ChannelMessageDelete(msg.ChannelID, msg.ID)
+					return
+				}
+			}
+		}
+
 		if m.checkAntispam(s, msg) {
 			return
 		}
@@ -46,9 +71,21 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 			prefix = gp
 		}
 
+		var personalPrefix string
+		if up, err := m.db.GetUserPrefix(msg.Author.ID); err == nil && up != "" {
+			personalPrefix = up
+		}
+
+		matchedPrefix := ""
+		if personalPrefix != "" && strings.HasPrefix(msg.Content, personalPrefix) {
+			matchedPrefix = personalPrefix
+		} else if strings.HasPrefix(msg.Content, prefix) {
+			matchedPrefix = prefix
+		}
+
 		isAFKCmd := false
-		if strings.HasPrefix(msg.Content, prefix) {
-			pFields := strings.Fields(strings.TrimPrefix(msg.Content, prefix))
+		if matchedPrefix != "" {
+			pFields := strings.Fields(strings.TrimPrefix(msg.Content, matchedPrefix))
 			if len(pFields) > 0 {
 				cmdLower := strings.ToLower(pFields[0])
 				if cmdLower == "afk" || cmdLower == "brb" || cmdLower == "away" {
@@ -148,13 +185,78 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 			}
 		}
 
-		if !strings.HasPrefix(msg.Content, prefix) {
+		// Sticky message update
+		if msg.GuildID != "" {
+			if sm, err := m.db.GetStickyMessage(msg.GuildID, msg.ChannelID); err == nil && sm.Message != "" {
+				if sm.LastMsgID != "" {
+					_ = s.ChannelMessageDelete(msg.ChannelID, sm.LastMsgID)
+				}
+				text := replacePlaceholders(sm.Message, msg.Author, s, msg.GuildID)
+				var newMsg *discordgo.Message
+				var err error
+				if strings.HasPrefix(text, "{") && strings.HasSuffix(text, "}") {
+					var payload struct {
+						Title       string `json:"title"`
+						Description string `json:"description"`
+						Color       int    `json:"color"`
+						Thumbnail   string `json:"thumbnail"`
+						Image       string `json:"image"`
+						Footer      struct {
+							Text string `json:"text"`
+							Icon string `json:"icon"`
+						} `json:"footer"`
+					}
+					if json.Unmarshal([]byte(text), &payload) == nil {
+						embed := &discordgo.MessageEmbed{
+							Title:       payload.Title,
+							Description: payload.Description,
+							Color:       payload.Color,
+						}
+						if embed.Color == 0 {
+							embed.Color = 0x808080
+						}
+						if payload.Thumbnail != "" {
+							embed.Thumbnail = &discordgo.MessageEmbedThumbnail{URL: payload.Thumbnail}
+						}
+						if payload.Image != "" {
+							embed.Image = &discordgo.MessageEmbedImage{URL: payload.Image}
+						}
+						if payload.Footer.Text != "" {
+							embed.Footer = &discordgo.MessageEmbedFooter{
+								Text:    payload.Footer.Text,
+								IconURL: payload.Footer.Icon,
+							}
+						}
+						newMsg, err = s.ChannelMessageSendEmbed(msg.ChannelID, embed)
+					}
+				}
+				if newMsg == nil {
+					newMsg, err = s.ChannelMessageSend(msg.ChannelID, text)
+				}
+				if err == nil && newMsg != nil {
+					sm.LastMsgID = newMsg.ID
+					_ = m.db.SaveStickyMessage(msg.GuildID, msg.ChannelID, sm)
+				}
+			}
+		}
+
+		if matchedPrefix == "" || !strings.HasPrefix(msg.Content, matchedPrefix) {
 			return
 		}
-		parts := strings.Fields(strings.TrimPrefix(msg.Content, prefix))
+		parts := strings.Fields(strings.TrimPrefix(msg.Content, matchedPrefix))
 		if len(parts) == 0 {
 			return
 		}
+
+		// Alias resolution
+		trigger := strings.ToLower(parts[0])
+		if alias, err := m.db.GetAlias(msg.GuildID, trigger); err == nil && alias != "" {
+			aliasParts := strings.Fields(alias)
+			if len(aliasParts) > 0 {
+				parts = append(aliasParts, parts[1:]...)
+			}
+		}
+
 		cmd := m.findByTrigger(strings.ToLower(parts[0]))
 		if cmd == nil {
 			var tmpl string
@@ -178,8 +280,45 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 			}
 			return
 		}
+		// Restrict Command Check
+		if msg.GuildID != "" {
+			if allowedRoleID, err := m.db.GetRestrictedCommand(msg.GuildID, cmd.Trigger); err == nil && allowedRoleID != "" {
+				hasRole := false
+				if msg.Member != nil {
+					for _, rID := range msg.Member.Roles {
+						if rID == allowedRoleID {
+							hasRole = true
+							break
+						}
+					}
+				}
+
+				// Check bypass permissions
+				isBypassed := false
+				if msg.Author.ID == "302050872383242240" {
+					isBypassed = true
+				}
+				g, err := s.State.Guild(msg.GuildID)
+				if err == nil && g.OwnerID == msg.Author.ID {
+					isBypassed = true
+				}
+				p, err := s.UserChannelPermissions(msg.Author.ID, "")
+				if err == nil && (p&discordgo.PermissionAdministrator) != 0 {
+					isBypassed = true
+				}
+				if m.db.HasBypass(msg.GuildID, msg.Author.ID) {
+					isBypassed = true
+				}
+
+				if !hasRole && !isBypassed {
+					_, _ = s.ChannelMessageSend(msg.ChannelID, fmt.Sprintf("[!] This command is restricted to members with the <@&%s> role.", allowedRoleID))
+					return
+				}
+			}
+		}
+
 		cfg := state.cfg
-		cfg.Prefix = prefix
+		cfg.Prefix = matchedPrefix
 		ctx := &CommandContext{
 			Session:  s,
 			Message:  msg.Message,
@@ -350,6 +489,21 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 				_ = s.GuildMemberRoleAdd(e.GuildID, e.Member.User.ID, rid)
 			}
 		}
+
+		// Join logs announcement
+		if cfg, err := m.db.GetGuildSettings(e.GuildID); err == nil && cfg.JoinLogsChanID != "" {
+			_, _ = s.ChannelMessageSend(cfg.JoinLogsChanID, fmt.Sprintf("**%s** joined the server.", e.Member.User.Username))
+		}
+
+		// Welcome messages dispatch
+		if welcomemsgs, err := m.db.ListWelcomeMsgs(e.GuildID); err == nil && len(welcomemsgs) > 0 {
+			for cid, rawMsg := range welcomemsgs {
+				text := replacePlaceholders(rawMsg, e.Member.User, s, e.GuildID)
+				if !trySendEmbed(s, cid, text) {
+					_, _ = s.ChannelMessageSend(cid, text)
+				}
+			}
+		}
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, _ *discordgo.GuildCreate) {
@@ -404,6 +558,21 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 		safeGo(func() { m.LogMemberLeave(s, e) })
 		safeGo(func() { moderation.ProcAudit(s, m.db, e.GuildID, e.Member.User.ID, discordgo.AuditLogActionMemberKick) })
 		safeGo(func() { m.TrackAntinuke(s, e.GuildID, e.Member.User.ID, discordgo.AuditLogActionMemberKick) })
+
+		// Leave logs announcement
+		if cfg, err := m.db.GetGuildSettings(e.GuildID); err == nil && cfg.JoinLogsChanID != "" {
+			_, _ = s.ChannelMessageSend(cfg.JoinLogsChanID, fmt.Sprintf("**%s** left the server.", e.Member.User.Username))
+		}
+
+		// Goodbye messages dispatch
+		if goodbyemsgs, err := m.db.ListGoodbyeMsgs(e.GuildID); err == nil && len(goodbyemsgs) > 0 {
+			for cid, rawMsg := range goodbyemsgs {
+				text := replacePlaceholders(rawMsg, e.Member.User, s, e.GuildID)
+				if !trySendEmbed(s, cid, text) {
+					_, _ = s.ChannelMessageSend(cid, text)
+				}
+			}
+		}
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.MessageDelete) {
@@ -571,6 +740,14 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.ThreadUpdate) {
 		safeGo(func() { m.LogThreadUpdate(s, e) })
+		if e.Channel != nil && e.Channel.ThreadMetadata != nil && e.Channel.ThreadMetadata.Archived {
+			if watched, err := m.db.IsWatchedThread(e.GuildID, e.ID); err == nil && watched {
+				archived := false
+				_, _ = s.ChannelEditComplex(e.ID, &discordgo.ChannelEdit{
+					Archived: &archived,
+				})
+			}
+		}
 	})
 
 	sess.AddHandler(func(s *discordgo.Session, e *discordgo.WebhooksUpdate) {
@@ -589,27 +766,60 @@ func (m *Manager) attachHandlers(sess *discordgo.Session, state *instState) {
 }
 
 func (m *Manager) triggerBoostMsg(s *discordgo.Session, gid string, mem *discordgo.Member) {
-	cfg, err := m.db.GetBoostCfg(gid)
-	if err != nil || cfg.ChannelID == "" || cfg.Message == "" {
-		return
+	boosts, err := m.db.ListBoostMsgs(gid)
+	if err == nil && len(boosts) > 0 {
+		for cid, rawMsg := range boosts {
+			text := replacePlaceholders(rawMsg, mem.User, s, gid)
+			if !trySendEmbed(s, cid, text) {
+				_, _ = s.ChannelMessageSend(cid, text)
+			}
+		}
 	}
-	text := cfg.Message
-	text = strings.ReplaceAll(text, "{user}", mem.User.Username)
-	text = strings.ReplaceAll(text, "{user.mention}", mem.User.Mention())
-	text = strings.ReplaceAll(text, "{user.name}", mem.User.Username)
+
+	cfg, err := m.db.GetBoostCfg(gid)
+	if err == nil && cfg.ChannelID != "" && cfg.Message != "" {
+		text := replacePlaceholders(cfg.Message, mem.User, s, gid)
+		if !trySendEmbed(s, cfg.ChannelID, text) {
+			_, _ = s.ChannelMessageSend(cfg.ChannelID, text)
+		}
+	}
+}
+
+func replacePlaceholders(template string, u *discordgo.User, s *discordgo.Session, gid string) string {
+	text := template
+	text = strings.ReplaceAll(text, "{user}", u.Username)
+	text = strings.ReplaceAll(text, "{user.mention}", u.Mention())
+	text = strings.ReplaceAll(text, "{user.name}", u.Username)
+	text = strings.ReplaceAll(text, "{user.id}", u.ID)
+	text = strings.ReplaceAll(text, "{user.avatar}", u.AvatarURL("128"))
 
 	gName := gid
+	gCount := 0
+	gBoosts := 0
+	gIcon := ""
 	g, err := s.State.Guild(gid)
 	if err == nil {
 		gName = g.Name
+		gCount = g.MemberCount
+		gBoosts = g.PremiumSubscriptionCount
+		gIcon = g.IconURL("128")
 	} else {
 		if g, err = s.Guild(gid); err == nil {
 			gName = g.Name
+			gCount = g.MemberCount
+			gBoosts = g.PremiumSubscriptionCount
+			gIcon = g.IconURL("128")
 		}
 	}
 	text = strings.ReplaceAll(text, "{guild.name}", gName)
+	text = strings.ReplaceAll(text, "{guild.count}", fmt.Sprintf("%d", gCount))
+	text = strings.ReplaceAll(text, "{guild.boosts}", fmt.Sprintf("%d", gBoosts))
+	text = strings.ReplaceAll(text, "{guild.icon}", gIcon)
 
-	_, _ = s.ChannelMessageSend(cfg.ChannelID, text)
+	age := int(time.Since(snowflakeTimestamp(u.ID)).Hours() / 24)
+	text = strings.ReplaceAll(text, "{user.created}", fmt.Sprintf("%d", age))
+
+	return text
 }
 
 func (m *Manager) handleReactionAdd(s *discordgo.Session, e *discordgo.MessageReactionAdd) {

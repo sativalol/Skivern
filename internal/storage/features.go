@@ -842,3 +842,605 @@ func (d *DB) ListTouches(gid string) ([]TouchRecord, error) {
 	})
 	return out, err
 }
+
+type GuildSettings struct {
+	BaseRoleID     string `json:"base_role_id"`
+	JoinLogsChanID string `json:"join_logs_chan_id"`
+	JailRoleID     string `json:"jail_role_id"`
+	JailChanID     string `json:"jail_chan_id"`
+	JailMessage    string `json:"jail_message"`
+	JailRoles      bool   `json:"jail_roles"`
+	Autoplay       string `json:"autoplay"`
+	MaxShares      int    `json:"max_shares"`
+	BoosterLimit   int    `json:"booster_limit"`
+}
+
+func (d *DB) GetGuildSettings(gid string) (GuildSettings, error) {
+	cfg := GuildSettings{
+		MaxShares: 5,
+	}
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktGuildSettings)
+		if b == nil {
+			return fmt.Errorf("no bucket")
+		}
+		v := b.Get([]byte(gid))
+		if v == nil {
+			return fmt.Errorf("no config found")
+		}
+		return json.Unmarshal(v, &cfg)
+	})
+	if err != nil {
+		return GuildSettings{MaxShares: 5}, nil
+	}
+	if cfg.MaxShares == 0 {
+		cfg.MaxShares = 5
+	}
+	return cfg, nil
+}
+
+func (d *DB) SaveGuildSettings(gid string, cfg GuildSettings) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return putJSON(tx.Bucket(bktGuildSettings), []byte(gid), cfg)
+	})
+}
+
+func (d *DB) SaveAlias(gid, trigger, target string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktAliases).Put([]byte(gid+":"+trigger), []byte(target))
+	})
+}
+
+func (d *DB) GetAlias(gid, trigger string) (string, error) {
+	var target string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktAliases).Get([]byte(gid + ":" + trigger))
+		if v == nil {
+			return fmt.Errorf("no alias")
+		}
+		target = string(v)
+		return nil
+	})
+	return target, err
+}
+
+func (d *DB) DeleteAlias(gid, trigger string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktAliases).Delete([]byte(gid + ":" + trigger))
+	})
+}
+
+func (d *DB) DeleteAllAliases(gid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktAliases)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, _ := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, _ = c.Next() {
+			_ = b.Delete(k)
+		}
+		return nil
+	})
+}
+
+func (d *DB) ListAliases(gid string) (map[string]string, error) {
+	out := make(map[string]string)
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktAliases)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, v := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, v = c.Next() {
+			trigger := strings.TrimPrefix(string(k), prefix)
+			out[trigger] = string(v)
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (d *DB) SaveWelcomeMsg(gid, cid, msg string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktWelcomeMsgs).Put([]byte(gid+":"+cid), []byte(msg))
+	})
+}
+
+func (d *DB) GetWelcomeMsg(gid, cid string) (string, error) {
+	var msg string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktWelcomeMsgs).Get([]byte(gid + ":" + cid))
+		if v == nil {
+			return fmt.Errorf("not found")
+		}
+		msg = string(v)
+		return nil
+	})
+	return msg, err
+}
+
+func (d *DB) DeleteWelcomeMsg(gid, cid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktWelcomeMsgs).Delete([]byte(gid + ":" + cid))
+	})
+}
+
+func (d *DB) ListWelcomeMsgs(gid string) (map[string]string, error) {
+	out := make(map[string]string)
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktWelcomeMsgs)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, v := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, v = c.Next() {
+			cid := strings.TrimPrefix(string(k), prefix)
+			out[cid] = string(v)
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (d *DB) SaveGoodbyeMsg(gid, cid, msg string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktGoodbyeMsgs).Put([]byte(gid+":"+cid), []byte(msg))
+	})
+}
+
+func (d *DB) GetGoodbyeMsg(gid, cid string) (string, error) {
+	var msg string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktGoodbyeMsgs).Get([]byte(gid + ":" + cid))
+		if v == nil {
+			return fmt.Errorf("not found")
+		}
+		msg = string(v)
+		return nil
+	})
+	return msg, err
+}
+
+func (d *DB) DeleteGoodbyeMsg(gid, cid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktGoodbyeMsgs).Delete([]byte(gid + ":" + cid))
+	})
+}
+
+func (d *DB) ListGoodbyeMsgs(gid string) (map[string]string, error) {
+	out := make(map[string]string)
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktGoodbyeMsgs)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, v := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, v = c.Next() {
+			cid := strings.TrimPrefix(string(k), prefix)
+			out[cid] = string(v)
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (d *DB) SaveBoostMsg(gid, cid, msg string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktBoostMsgs).Put([]byte(gid+":"+cid), []byte(msg))
+	})
+}
+
+func (d *DB) GetBoostMsg(gid, cid string) (string, error) {
+	var msg string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktBoostMsgs).Get([]byte(gid + ":" + cid))
+		if v == nil {
+			return fmt.Errorf("not found")
+		}
+		msg = string(v)
+		return nil
+	})
+	return msg, err
+}
+
+func (d *DB) DeleteBoostMsg(gid, cid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktBoostMsgs).Delete([]byte(gid + ":" + cid))
+	})
+}
+
+func (d *DB) ListBoostMsgs(gid string) (map[string]string, error) {
+	out := make(map[string]string)
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktBoostMsgs)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, v := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, v = c.Next() {
+			cid := strings.TrimPrefix(string(k), prefix)
+			out[cid] = string(v)
+		}
+		return nil
+	})
+	return out, err
+}
+
+type StickyMessage struct {
+	ChannelID string `json:"channel_id"`
+	Message   string `json:"message"`
+	LastMsgID string `json:"last_msg_id"`
+}
+
+func (d *DB) SaveStickyMessage(gid, cid string, sm StickyMessage) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return putJSON(tx.Bucket(bktStickyMsgs), []byte(gid+":"+cid), sm)
+	})
+}
+
+func (d *DB) GetStickyMessage(gid, cid string) (StickyMessage, error) {
+	var sm StickyMessage
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktStickyMsgs).Get([]byte(gid + ":" + cid))
+		if v == nil {
+			return fmt.Errorf("not found")
+		}
+		return json.Unmarshal(v, &sm)
+	})
+	return sm, err
+}
+
+func (d *DB) DeleteStickyMessage(gid, cid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktStickyMsgs).Delete([]byte(gid + ":" + cid))
+	})
+}
+
+func (d *DB) ListStickyMessages(gid string) ([]StickyMessage, error) {
+	var out []StickyMessage
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktStickyMsgs)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, v := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, v = c.Next() {
+			var sm StickyMessage
+			if json.Unmarshal(v, &sm) == nil {
+				out = append(out, sm)
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (d *DB) SaveImgOnlyChannel(gid, cid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktImgOnlyChans).Put([]byte(gid+":"+cid), []byte{1})
+	})
+}
+
+func (d *DB) IsImgOnlyChannel(gid, cid string) (bool, error) {
+	var exists bool
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktImgOnlyChans).Get([]byte(gid + ":" + cid))
+		exists = (v != nil)
+		return nil
+	})
+	return exists, err
+}
+
+func (d *DB) DeleteImgOnlyChannel(gid, cid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktImgOnlyChans).Delete([]byte(gid + ":" + cid))
+	})
+}
+
+func (d *DB) ListImgOnlyChannels(gid string) ([]string, error) {
+	var out []string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktImgOnlyChans)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, _ := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, _ = c.Next() {
+			cid := strings.TrimPrefix(string(k), prefix)
+			out = append(out, cid)
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (d *DB) SaveUserPrefix(uid, prefix string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktPrefixes).Put([]byte("user:"+uid), []byte(prefix))
+	})
+}
+
+func (d *DB) GetUserPrefix(uid string) (string, error) {
+	var prefix string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktPrefixes).Get([]byte("user:" + uid))
+		if v == nil {
+			return fmt.Errorf("no user prefix")
+		}
+		prefix = string(v)
+		return nil
+	})
+	return prefix, err
+}
+
+func (d *DB) DeleteUserPrefix(uid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktPrefixes).Delete([]byte("user:" + uid))
+	})
+}
+
+func (d *DB) SaveBoosterShare(gid, ownerID, targetID, roleID string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktBoosterShares).Put([]byte(gid+":"+ownerID+":"+targetID), []byte(roleID))
+	})
+}
+
+func (d *DB) DeleteBoosterShare(gid, ownerID, targetID string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktBoosterShares).Delete([]byte(gid + ":" + ownerID + ":" + targetID))
+	})
+}
+
+func (d *DB) ListBoosterSharesForOwner(gid, ownerID string) (map[string]string, error) {
+	out := make(map[string]string)
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktBoosterShares)
+		c := b.Cursor()
+		prefix := gid + ":" + ownerID + ":"
+		for k, v := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, v = c.Next() {
+			parts := strings.Split(string(k), ":")
+			if len(parts) >= 3 {
+				targetID := parts[2]
+				out[targetID] = string(v)
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (d *DB) ListAllBoosterShares(gid string) (map[string]string, error) {
+	out := make(map[string]string)
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktBoosterShares)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, v := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, v = c.Next() {
+			out[string(k)] = string(v)
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (d *DB) SaveBoosterFilter(gid, word string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktBoosterFilters).Put([]byte(gid+":"+strings.ToLower(word)), []byte{1})
+	})
+}
+
+func (d *DB) DeleteBoosterFilter(gid, word string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktBoosterFilters).Delete([]byte(gid + ":" + strings.ToLower(word)))
+	})
+}
+
+func (d *DB) ListBoosterFilters(gid string) ([]string, error) {
+	var out []string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktBoosterFilters)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, _ := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, _ = c.Next() {
+			word := strings.TrimPrefix(string(k), prefix)
+			out = append(out, word)
+		}
+		return nil
+	})
+	return out, err
+}
+
+type Note struct {
+	ID        string    `json:"id"`
+	Text      string    `json:"text"`
+	Moderator string    `json:"moderator"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func (d *DB) SaveNote(gid, uid, text, moderatorID string) (string, error) {
+	noteID := fmt.Sprintf("%04x", time.Now().UnixNano()&0xffff)
+	note := Note{
+		ID:        noteID,
+		Text:      text,
+		Moderator: moderatorID,
+		Timestamp: time.Now(),
+	}
+
+	err := d.b.Update(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(bktNotes)
+		key := []byte(gid + ":" + uid)
+		var notes []Note
+		v := bkt.Get(key)
+		if v != nil {
+			_ = json.Unmarshal(v, &notes)
+		}
+		notes = append(notes, note)
+		return putJSON(bkt, key, notes)
+	})
+	return noteID, err
+}
+
+func (d *DB) DeleteNote(gid, uid, noteID string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(bktNotes)
+		key := []byte(gid + ":" + uid)
+		var notes []Note
+		v := bkt.Get(key)
+		if v == nil {
+			return fmt.Errorf("no notes found")
+		}
+		_ = json.Unmarshal(v, &notes)
+
+		found := false
+		var newNotes []Note
+		for _, n := range notes {
+			if n.ID == noteID {
+				found = true
+				continue
+			}
+			newNotes = append(newNotes, n)
+		}
+		if !found {
+			return fmt.Errorf("note not found")
+		}
+		if len(newNotes) == 0 {
+			return bkt.Delete(key)
+		}
+		return putJSON(bkt, key, newNotes)
+	})
+}
+
+func (d *DB) ListNotes(gid, uid string) ([]Note, error) {
+	var notes []Note
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktNotes).Get([]byte(gid + ":" + uid))
+		if v == nil {
+			return nil
+		}
+		return json.Unmarshal(v, &notes)
+	})
+	return notes, err
+}
+
+func (d *DB) ClearNotes(gid, uid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktNotes).Delete([]byte(gid + ":" + uid))
+	})
+}
+
+func (d *DB) SaveLockdownIgnore(gid, cid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktLockdownIgnores).Put([]byte(gid+":"+cid), []byte{1})
+	})
+}
+
+func (d *DB) IsLockdownIgnore(gid, cid string) (bool, error) {
+	ignored := false
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktLockdownIgnores).Get([]byte(gid + ":" + cid))
+		if v != nil {
+			ignored = true
+		}
+		return nil
+	})
+	return ignored, err
+}
+
+func (d *DB) DeleteLockdownIgnore(gid, cid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktLockdownIgnores).Delete([]byte(gid + ":" + cid))
+	})
+}
+
+func (d *DB) ListLockdownIgnores(gid string) ([]string, error) {
+	var out []string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktLockdownIgnores)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, _ := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, _ = c.Next() {
+			cid := strings.TrimPrefix(string(k), prefix)
+			out = append(out, cid)
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (d *DB) SaveRestrictedCommand(gid, cmd, roleID string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktRestrictedCmds).Put([]byte(gid+":"+strings.ToLower(cmd)), []byte(roleID))
+	})
+}
+
+func (d *DB) GetRestrictedCommand(gid, cmd string) (string, error) {
+	var roleID string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktRestrictedCmds).Get([]byte(gid + ":" + strings.ToLower(cmd)))
+		if v != nil {
+			roleID = string(v)
+		}
+		return nil
+	})
+	return roleID, err
+}
+
+func (d *DB) DeleteRestrictedCommand(gid, cmd string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktRestrictedCmds).Delete([]byte(gid + ":" + strings.ToLower(cmd)))
+	})
+}
+
+func (d *DB) ListRestrictedCommands(gid string) (map[string]string, error) {
+	out := make(map[string]string)
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktRestrictedCmds)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, v := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, v = c.Next() {
+			cmd := strings.TrimPrefix(string(k), prefix)
+			out[cmd] = string(v)
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (d *DB) DeleteAllRestrictedCommands(gid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktRestrictedCmds)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, _ := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, _ = c.Next() {
+			_ = b.Delete(k)
+		}
+		return nil
+	})
+}
+
+func (d *DB) SaveWatchedThread(gid, tid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktWatchedThreads).Put([]byte(gid+":"+tid), []byte{1})
+	})
+}
+
+func (d *DB) IsWatchedThread(gid, tid string) (bool, error) {
+	watched := false
+	err := d.b.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bktWatchedThreads).Get([]byte(gid + ":" + tid))
+		if v != nil {
+			watched = true
+		}
+		return nil
+	})
+	return watched, err
+}
+
+func (d *DB) DeleteWatchedThread(gid, tid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bktWatchedThreads).Delete([]byte(gid + ":" + tid))
+	})
+}
+
+func (d *DB) ListWatchedThreads(gid string) ([]string, error) {
+	var out []string
+	err := d.b.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktWatchedThreads)
+		c := b.Cursor()
+		prefix := gid + ":"
+		for k, _ := c.Seek([]byte(prefix)); k != nil && strings.HasPrefix(string(k), prefix); k, _ = c.Next() {
+			tid := strings.TrimPrefix(string(k), prefix)
+			out = append(out, tid)
+		}
+		return nil
+	})
+	return out, err
+}
+

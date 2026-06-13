@@ -71,7 +71,7 @@ var Remind = &manager.Command{
 			}
 			return ctx.Reply(sb.String())
 
-		case "cancel":
+		case "cancel", "remove":
 			if len(ctx.Args) < 2 {
 				return ctx.SendHelp("remind")
 			}
@@ -110,5 +110,16 @@ var Remind = &manager.Command{
 			dueStr := r.Time.Format("2006-01-02 15:04:05 MST")
 			return ctx.Reply(fmt.Sprintf("[+] Reminder set! (ID: `%s`). I will remind you at `%s`.", id, dueStr))
 		}
+	},
+}
+
+var Reminders = &manager.Command{
+	Trigger:     "reminders",
+	Name:        "reminders",
+	Description: "List your active reminders",
+	Category:    "utility",
+	Execute: func(ctx *manager.CommandContext) error {
+		ctx.Args = []string{"list"}
+		return Remind.Execute(ctx)
 	},
 }

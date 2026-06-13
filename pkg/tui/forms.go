@@ -12,26 +12,54 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type formField struct {
+	placeholder string
+	value       string
+	mask        bool
+}
+
+func createFormInputs(fields []formField, accent lipgloss.Color, lockFirst bool, lockedPlaceholder string) ([]textinput.Model, int) {
+	inputs := make([]textinput.Model, len(fields))
+	inputStyle := lipgloss.NewStyle().Foreground(accent)
+	for i, f := range fields {
+		ti := textinput.New()
+		ti.Placeholder = f.placeholder
+		ti.SetValue(f.value)
+		ti.Prompt = " > "
+		ti.TextStyle = inputStyle
+		if f.mask {
+			ti.EchoMode = textinput.EchoPassword
+			ti.EchoCharacter = '•'
+		}
+		if i == 0 && lockFirst {
+			if lockedPlaceholder != "" {
+				ti.Placeholder = lockedPlaceholder
+			} else {
+				ti.Placeholder = f.placeholder + " (Locked)"
+			}
+			ti.Blur()
+		}
+		inputs[i] = ti
+	}
+	return inputs, 0
+}
+
 func (m *Model) initGlobalInputs() {
-	m.inputs = make([]textinput.Model, 14)
-	fields := []struct {
-		placeholder string
-		value       string
-	}{
-		{"Global Name", ""},
-		{"Global Prefix", ""},
-		{"Global Footer", ""},
-		{"Global Embed Color (Hex)", ""},
-		{"Matrix Color (rgb/preset/hex)", ""},
-		{"Storage Location (local/portable/appdata)", ""},
-		{"Spotify Enabled (yes/no)", ""},
-		{"Logo URL", ""},
-		{"Always on Top (yes/no)", ""},
-		{"Show Logo (yes/no)", ""},
-		{"Auto Start Lavalink (yes/no)", ""},
-		{"Lavalink Host (e.g. localhost:2333)", ""},
-		{"Lavalink Password", ""},
-		{"Home Emoji Server ID", ""},
+	fields := []formField{
+		{"Global Name", "", false},
+		{"Global Prefix", "", false},
+		{"Global Footer", "", false},
+		{"Global Embed Color (Hex)", "", false},
+		{"Matrix Color (rgb/preset/hex)", "", false},
+		{"Storage Location (local/portable/appdata)", "", false},
+		{"Spotify Enabled (yes/no)", "", false},
+		{"Logo URL", "", false},
+		{"Always on Top (yes/no)", "", false},
+		{"Show Logo (yes/no)", "", false},
+		{"Auto Start Lavalink (yes/no)", "", false},
+		{"Lavalink Host (e.g. localhost:2333)", "", false},
+		{"Lavalink Password", "", true},
+		{"Home Emoji Server ID", "", false},
 	}
 
 	g := config.GetGlobal()
@@ -63,31 +91,17 @@ func (m *Model) initGlobalInputs() {
 	fields[13].value = g.EmojiServerID
 
 	th := Themes[curTheme]
-	inputStyle := lipgloss.NewStyle().Foreground(th.Accent)
-
-	for i, f := range fields {
-		ti := textinput.New()
-		ti.Placeholder = f.placeholder
-		ti.SetValue(f.value)
-		ti.Prompt = " > "
-		ti.TextStyle = inputStyle
-		m.inputs[i] = ti
-	}
-	m.focus = 0
+	m.inputs, m.focus = createFormInputs(fields, th.Accent, false, "")
 	m.inputs[0].Focus()
 }
 
 func (m *Model) initPalantirInputs() {
-	m.inputs = make([]textinput.Model, 5)
-	fields := []struct {
-		placeholder string
-		value       string
-	}{
-		{"Palantir Enabled (yes/no)", ""},
-		{"Blocked Servers", ""},
-		{"Blocked Channels", ""},
-		{"Blocked Users", ""},
-		{"Blocked Events", ""},
+	fields := []formField{
+		{"Palantir Enabled (yes/no)", "", false},
+		{"Blocked Servers", "", false},
+		{"Blocked Channels", "", false},
+		{"Blocked Users", "", false},
+		{"Blocked Events", "", false},
 	}
 
 	pCfg, _ := m.mgr.GetPalantirCfg()
@@ -102,33 +116,19 @@ func (m *Model) initPalantirInputs() {
 	fields[4].value = strings.Join(pCfg.BlockedEvents, ", ")
 
 	th := Themes[curTheme]
-	inputStyle := lipgloss.NewStyle().Foreground(th.Accent)
-
-	for i, f := range fields {
-		ti := textinput.New()
-		ti.Placeholder = f.placeholder
-		ti.SetValue(f.value)
-		ti.Prompt = " > "
-		ti.TextStyle = inputStyle
-		m.inputs[i] = ti
-	}
-	m.focus = 0
+	m.inputs, m.focus = createFormInputs(fields, th.Accent, false, "")
 	m.inputs[0].Focus()
 }
 
 func (m *Model) initInputs(b *config.BotInst) {
-	m.inputs = make([]textinput.Model, 7)
-	fields := []struct {
-		placeholder string
-		value       string
-	}{
-		{"Client ID", ""},
-		{"Bot Token", ""},
-		{"Prefix (e.g. .)", ""},
-		{"Custom Name Override", ""},
-		{"Custom Footer Override", ""},
-		{"Custom Color (Hex e.g. 1a1a1a)", ""},
-		{"Avatar URL", ""},
+	fields := []formField{
+		{"Client ID", "", false},
+		{"Bot Token", "", true},
+		{"Prefix (e.g. .)", "", false},
+		{"Custom Name Override", "", false},
+		{"Custom Footer Override", "", false},
+		{"Custom Color (Hex e.g. 1a1a1a)", "", false},
+		{"Avatar URL", "", false},
 	}
 
 	if b != nil {
@@ -144,21 +144,43 @@ func (m *Model) initInputs(b *config.BotInst) {
 	}
 
 	th := Themes[curTheme]
-	inputStyle := lipgloss.NewStyle().Foreground(th.Accent)
+	m.inputs, m.focus = createFormInputs(fields, th.Accent, b != nil, "Client ID (Locked)")
+	m.inputs[0].Focus()
+}
 
-	for i, f := range fields {
-		ti := textinput.New()
-		ti.Placeholder = f.placeholder
-		ti.SetValue(f.value)
-		ti.Prompt = " > "
-		ti.TextStyle = inputStyle
-		if i == 0 && b != nil {
-			ti.Placeholder = "Client ID (Locked)"
-			ti.Blur()
-		}
-		m.inputs[i] = ti
+func (m *Model) initAIInputs(p *storage.AIProvider) {
+	fields := []formField{
+		{"Provider ID", "", false},
+		{"Provider Type", "", false},
+		{"Friendly Name", "", false},
+		{"API Key", "", true},
+		{"Base URL Override", "", false},
+		{"Default Model", "", false},
+		{"Fallback ID (ID or 'random')", "", false},
+		{"Max Tokens Limit (0 = unlimited)", "", false},
+		{"Max Requests Limit (0 = unlimited)", "", false},
 	}
-	m.focus = 0
+
+	if p != nil {
+		fields[0].value = p.ID
+		fields[1].value = p.Type
+		fields[2].value = p.Name
+		fields[3].value = p.APIKey
+		fields[4].value = p.BaseURL
+		fields[5].value = p.DefaultModel
+		fields[6].value = p.FallbackID
+		fields[7].value = strconv.FormatInt(p.MaxTokens, 10)
+		fields[8].value = strconv.FormatInt(p.MaxRequests, 10)
+	} else {
+		fields[1].value = "openai"
+		fields[2].value = "New OpenAI"
+		fields[5].value = "gpt-4o-mini"
+		fields[7].value = "0"
+		fields[8].value = "0"
+	}
+
+	th := Themes[curTheme]
+	m.inputs, m.focus = createFormInputs(fields, th.Accent, p != nil, "Provider ID (Locked)")
 	m.inputs[0].Focus()
 }
 
@@ -312,3 +334,4 @@ func (m *Model) saveEdit() {
 	_ = m.mgr.UpdateInstance(b.ClientID)
 	m.reload()
 }
+

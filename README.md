@@ -66,6 +66,29 @@ Saves every event (message updates/deletions, member changes, role updates, voic
 
 ---
 
+## Database Encryption
+
+All sensitive credentials (such as Discord Bot Tokens and AI API keys) are stored encrypted at rest inside BoltDB (`bots.db`) using authenticated **AES-256-GCM**.
+
+### Key Configuration
+
+The 32-byte encryption key is derived using SHA-256 from your master key string. You can configure this key in one of two ways:
+
+1. **Local Configuration File (Recommended for Local Use)**:
+   Add a `crypt_key` field to your `tui_config.json` next to the binary:
+   ```json
+   {
+     "storage_location": "local",
+     "crypt_key": "your-secret-master-key-here"
+   }
+   ```
+2. **Environment Variable (Recommended for Production)**:
+   Set the `SKYVERN_CRYPT_KEY` environment variable in your operating system. This is safer because it prevents database decryption even if your application directory is leaked or stolen.
+
+If neither is set, Skyvern will print a warning on boot and use a fallback default key. Plaintext credentials from older database versions are automatically migrated to encrypted form on their next write transaction.
+
+---
+
 ## Plugins
 
 Skyvern uses an in-tree plugin system to keep the manager clean. Plugins are given direct access to the database and session manager, meaning they can register commands, attach custom event handlers, or spin up workers.

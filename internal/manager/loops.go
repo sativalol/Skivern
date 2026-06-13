@@ -27,14 +27,21 @@ func (m *Manager) flushLoop() {
 }
 
 func (m *Manager) flushAnalytics() {
-	m.stats.mu.RLock()
-	snap := make(map[string]storage.Analytics, len(m.stats.data))
-	for k, v := range m.stats.data {
-		snap[k] = *v
+	m.stats.mu.Lock()
+	if m.stats.lastFlushed == nil {
+		m.stats.lastFlushed = make(map[string]storage.Analytics)
 	}
-	m.stats.mu.RUnlock()
+	dirty := make(map[string]storage.Analytics)
+	for k, v := range m.stats.data {
+		last := m.stats.lastFlushed[k]
+		if v.TotalCmds != last.TotalCmds || v.PrefixCmds != last.PrefixCmds || v.SlashCmds != last.SlashCmds || v.GuildCount != last.GuildCount {
+			dirty[k] = *v
+			m.stats.lastFlushed[k] = *v
+		}
+	}
+	m.stats.mu.Unlock()
 
-	for id, a := range snap {
+	for id, a := range dirty {
 		if err := m.db.SaveAnalytics(id, a); err != nil {
 			fmt.Printf("flush %q: %v\n", id, err)
 		}
@@ -369,7 +376,7 @@ func (m *Manager) scheduleLoop() {
 }
 
 func (m *Manager) gcLoop() {
-	ticker := time.NewTicker(15 * time.Second)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 	for {
 		select {

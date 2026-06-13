@@ -50,19 +50,19 @@ var Antiraid = &manager.Command{
 
 		switch sub {
 		case "enable", "on":
-			cfg, _ := ctx.DB.GetAntiraidCfg(gid)
+			cfg, _ := ctx.Mgr.GetAntiraidCfg(gid)
 			cfg.Enabled = true
-			_ = ctx.DB.SaveAntiraidCfg(gid, cfg)
+			_ = ctx.Mgr.SaveAntiraidCfg(gid, cfg)
 			return ctx.Reply("[+] Antiraid protection enabled.")
 
 		case "disable", "off":
-			cfg, _ := ctx.DB.GetAntiraidCfg(gid)
+			cfg, _ := ctx.Mgr.GetAntiraidCfg(gid)
 			cfg.Enabled = false
-			_ = ctx.DB.SaveAntiraidCfg(gid, cfg)
+			_ = ctx.Mgr.SaveAntiraidCfg(gid, cfg)
 			return ctx.Reply("[-] Antiraid protection disabled.")
 
 		case "settings", "status", "config":
-			cfg, _ := ctx.DB.GetAntiraidCfg(gid)
+			cfg, _ := ctx.Mgr.GetAntiraidCfg(gid)
 			status := "Disabled"
 			if cfg.Enabled {
 				status = "Enabled"
@@ -87,7 +87,7 @@ var Antiraid = &manager.Command{
 			opt := strings.ToLower(ctx.Args[1])
 			val := ctx.Args[2]
 
-			cfg, _ := ctx.DB.GetAntiraidCfg(gid)
+			cfg, _ := ctx.Mgr.GetAntiraidCfg(gid)
 
 			if opt == "action" {
 				act := strings.ToLower(val)
@@ -95,7 +95,7 @@ var Antiraid = &manager.Command{
 					return ctx.Reply("[!] Action must be one of: notify, lockdown, kick, ban.")
 				}
 				cfg.Action = act
-				_ = ctx.DB.SaveAntiraidCfg(gid, cfg)
+				_ = ctx.Mgr.SaveAntiraidCfg(gid, cfg)
 				return ctx.Reply(fmt.Sprintf("[+] Antiraid action set to `%s`.", act))
 			}
 
@@ -113,7 +113,7 @@ var Antiraid = &manager.Command{
 				return ctx.Reply("[!] Unknown option. Available options: join_limit, seconds, action.")
 			}
 
-			_ = ctx.DB.SaveAntiraidCfg(gid, cfg)
+			_ = ctx.Mgr.SaveAntiraidCfg(gid, cfg)
 			return ctx.Reply(fmt.Sprintf("[+] Antiraid option `%s` set to `%d`.", opt, num))
 
 		default:

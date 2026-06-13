@@ -307,3 +307,15 @@ func (d *DB) ListBypasses(gid string) ([]string, error) {
 	})
 	return out, err
 }
+
+func (d *DB) ResetCases(gid string) error {
+	return d.b.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bktCases)
+		if b == nil {
+			return nil
+		}
+		_ = b.DeleteBucket([]byte(gid))
+		return nil
+	})
+}
+

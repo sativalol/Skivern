@@ -73,21 +73,23 @@ var curTheme = 0
 type cmdMsg struct{ err error }
 
 type Model struct {
-	db      *storage.DB
-	mgr     *manager.Manager
-	err     error
-	width   int
-	height  int
-	bots    []config.BotInst
-	selIdx  int
-	editing bool
-	inputs  []textinput.Model
-	focus   int
-	tab     int
-	ticks   int
-	spTrack string
-	spProg  int
-	spTot   int
+	db       *storage.DB
+	mgr      *manager.Manager
+	err      error
+	width    int
+	height   int
+	bots     []config.BotInst
+	selIdx   int
+	aiProvs  []storage.AIProvider
+	aiSelIdx int
+	editing  bool
+	inputs   []textinput.Model
+	focus    int
+	tab      int
+	ticks    int
+	spTrack  string
+	spProg   int
+	spTot    int
 }
 
 func NewModel(db *storage.DB, mgr *manager.Manager) Model {
@@ -96,9 +98,10 @@ func NewModel(db *storage.DB, mgr *manager.Manager) Model {
 		curTheme = g.TuiTheme
 	}
 	m := Model{
-		db:   db,
-		mgr:  mgr,
-		bots: []config.BotInst{},
+		db:      db,
+		mgr:     mgr,
+		bots:    []config.BotInst{},
+		aiProvs: []storage.AIProvider{},
 	}
 	m.reload()
 	return m
@@ -112,6 +115,15 @@ func (m *Model) reload() {
 		}
 		if m.selIdx < 0 {
 			m.selIdx = 0
+		}
+	}
+	if provs, err := m.db.ListAIProviders(); err == nil {
+		m.aiProvs = provs
+		if m.aiSelIdx >= len(m.aiProvs) {
+			m.aiSelIdx = len(m.aiProvs) - 1
+		}
+		if m.aiSelIdx < 0 {
+			m.aiSelIdx = 0
 		}
 	}
 }
@@ -148,6 +160,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.saveGlobalSettings()
 					} else if m.tab == 2 {
 						m.savePalantirSettings()
+					} else if m.tab == 4 {
+						m.saveAISettings()
 					} else {
 						m.saveEdit()
 					}
@@ -171,14 +185,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "tab":
-			m.tab = (m.tab + 1) % 4
+			m.tab = (m.tab + 1) % 5
 		case "up", "k", "left", "h":
-			if m.selIdx > 0 {
-				m.selIdx--
+			if m.tab == 4 {
+				if m.aiSelIdx > 0 {
+					m.aiSelIdx--
+				}
+			} else {
+				if m.selIdx > 0 {
+					m.selIdx--
+				}
 			}
 		case "down", "j", "right", "l":
-			if m.selIdx < len(m.bots)-1 {
-				m.selIdx++
+			if m.tab == 4 {
+				if m.aiSelIdx < len(m.aiProvs)-1 {
+					m.aiSelIdx++
+				}
+			} else {
+				if m.selIdx < len(m.bots)-1 {
+					m.selIdx++
+				}
 			}
 		case "t":
 			curTheme = (curTheme + 1) % len(Themes)
@@ -190,6 +216,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.tab == 0 {
 				m.editing = true
 				m.initInputs(nil)
+			} else if m.tab == 4 {
+				m.editing = true
+				m.initAIInputs(nil)
 			}
 		case "e":
 			if m.tab == 1 {
@@ -198,6 +227,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.tab == 2 {
 				m.editing = true
 				m.initPalantirInputs()
+			} else if m.tab == 4 {
+				if len(m.aiProvs) > 0 {
+					m.editing = true
+					m.initAIInputs(&m.aiProvs[m.aiSelIdx])
+				}
 			} else if len(m.bots) > 0 {
 				m.editing = true
 				m.initInputs(&m.bots[m.selIdx])
@@ -224,6 +258,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				b := m.bots[m.selIdx]
 				_ = m.mgr.Stop(b.ClientID)
 				_ = m.db.DeleteBot(b.ClientID)
+				m.reload()
+			} else if m.tab == 4 && len(m.aiProvs) > 0 {
+				_ = m.db.DeleteAIProvider(m.aiProvs[m.aiSelIdx].ID)
 				m.reload()
 			}
 		}
@@ -305,6 +342,8 @@ func (m Model) View() string {
 		viewName = "PALANTIR"
 	} else if m.tab == 3 {
 		viewName = "LAVALINK"
+	} else if m.tab == 4 {
+		viewName = "AI CONFIG"
 	}
 	banner := bannerStyle.Render(fmt.Sprintf(" SKYVERN  |  %s  |  %d BOTS ACTIVE  |  THEME: %s ", viewName, len(m.bots), th.Name))
 
@@ -322,8 +361,10 @@ func (m Model) View() string {
 		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] Palantir Settings   [E] Edit Globals   [T] Cycle Themes   [Q] Quit")
 	} else if m.tab == 2 {
 		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] Lavalink Status   [E] Edit Palantir   [T] Cycle Themes   [Q] Quit")
+	} else if m.tab == 3 {
+		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] AI Configuration   [T] Cycle Themes   [Q] Quit")
 	} else {
-		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] Dashboard   [T] Cycle Themes   [Q] Quit")
+		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] Dashboard   [E] Edit AI Config   [T] Cycle Themes   [Q] Quit")
 	}
 
 	var body string

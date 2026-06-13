@@ -17,7 +17,7 @@ var (
 )
 
 func (m *Manager) TrackAntiraidJoin(s *discordgo.Session, gid string, mem *discordgo.Member) {
-	cfg, err := m.db.GetAntiraidCfg(gid)
+	cfg, err := m.GetAntiraidCfg(gid)
 	if err != nil || !cfg.Enabled {
 		return
 	}

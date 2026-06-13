@@ -29,7 +29,7 @@ func sfTimeConv(id string) (time.Time, error) {
 }
 
 func (m *Manager) TrackAntinuke(s *discordgo.Session, gid, targetID string, act discordgo.AuditLogAction) {
-	cfg, err := m.db.GetAntinukeCfg(gid)
+	cfg, err := m.GetAntinukeCfg(gid)
 	if err != nil || !cfg.Enabled {
 		return
 	}

@@ -112,22 +112,20 @@ func (m *Manager) checkFilter(s *discordgo.Session, msg *discordgo.MessageCreate
 		}
 	}
 	content := strings.ToLower(msg.Content)
+	normContent := normalizeHomoglyphs(content)
 	hasViolation := false
 	for _, w := range cfg.BlockedWords {
-		if containsBypass(content, w) {
+		if containsBypass(content, w, normContent) {
 			hasViolation = true
 			break
 		}
 	}
 	if !hasViolation {
-		for _, rxStr := range cfg.Regexes {
-			if rxStr != "" {
-				if re, err := regexp.Compile(rxStr); err == nil {
-					if re.MatchString(msg.Content) {
-						hasViolation = true
-						break
-					}
-				}
+		regexes := m.getCompiledRegexes(msg.GuildID)
+		for _, re := range regexes {
+			if re.MatchString(msg.Content) {
+				hasViolation = true
+				break
 			}
 		}
 	}
@@ -228,9 +226,44 @@ func (m *Manager) SaveFilterCfg(gid string, cfg storage.FilterCfg) error {
 	if err == nil {
 		m.configMu.Lock()
 		m.filterCache[gid] = cfg
+		if m.regexCache != nil {
+			delete(m.regexCache, gid)
+		}
 		m.configMu.Unlock()
 	}
 	return err
+}
+
+func (m *Manager) getCompiledRegexes(gid string) []*regexp.Regexp {
+	m.configMu.RLock()
+	regexes, ok := m.regexCache[gid]
+	m.configMu.RUnlock()
+	if ok {
+		return regexes
+	}
+
+	cfg, err := m.GetFilterCfg(gid)
+	if err != nil || !cfg.Enabled || len(cfg.Regexes) == 0 {
+		return nil
+	}
+
+	var compiled []*regexp.Regexp
+	for _, rxStr := range cfg.Regexes {
+		if rxStr != "" {
+			if re, err := regexp.Compile(rxStr); err == nil {
+				compiled = append(compiled, re)
+			}
+		}
+	}
+
+	m.configMu.Lock()
+	if m.regexCache == nil {
+		m.regexCache = make(map[string][]*regexp.Regexp)
+	}
+	m.regexCache[gid] = compiled
+	m.configMu.Unlock()
+
+	return compiled
 }
 
 func (m *Manager) GetAntilinkCfg(gid string) (storage.AntilinkCfg, error) {
@@ -385,8 +418,7 @@ func (m *Manager) LogPalantir(guildID, category, title, desc, userID, channelID 
 	}
 }
 
-func containsBypass(content, blocked string) bool {
-	content = strings.ToLower(content)
+func containsBypass(content, blocked, normContent string) bool {
 	blocked = strings.ToLower(blocked)
 	if blocked == "" {
 		return false
@@ -394,7 +426,6 @@ func containsBypass(content, blocked string) bool {
 	if strings.Contains(content, blocked) {
 		return true
 	}
-	normContent := normalizeHomoglyphs(content)
 	normBlocked := normalizeHomoglyphs(blocked)
 	if strings.Contains(normContent, normBlocked) {
 		return true
@@ -441,6 +472,7 @@ func isNoise(r rune) bool {
 
 func normalizeHomoglyphs(s string) string {
 	var sb strings.Builder
+	sb.Grow(len(s))
 	for _, r := range s {
 		switch r {
 		case 'а', 'ä', 'á', 'à', 'â', 'ã', 'å', '@', '4':
@@ -613,22 +645,20 @@ func (m *Manager) IsFiltered(gid string, content string) bool {
 		return false
 	}
 	lowContent := strings.ToLower(content)
+	normContent := normalizeHomoglyphs(lowContent)
 	hasViolation := false
 	for _, w := range cfg.BlockedWords {
-		if containsBypass(lowContent, w) {
+		if containsBypass(lowContent, w, normContent) {
 			hasViolation = true
 			break
 		}
 	}
 	if !hasViolation {
-		for _, rxStr := range cfg.Regexes {
-			if rxStr != "" {
-				if re, err := regexp.Compile(rxStr); err == nil {
-					if re.MatchString(content) {
-						hasViolation = true
-						break
-					}
-				}
+		regexes := m.getCompiledRegexes(gid)
+		for _, re := range regexes {
+			if re.MatchString(content) {
+				hasViolation = true
+				break
 			}
 		}
 	}
@@ -643,3 +673,56 @@ func (m *Manager) IsFiltered(gid string, content string) bool {
 	}
 	return false
 }
+
+func (m *Manager) GetAntinukeCfg(gid string) (storage.AntinukeCfg, error) {
+	m.configMu.RLock()
+	cfg, ok := m.antinukeCache[gid]
+	m.configMu.RUnlock()
+	if ok {
+		return cfg, nil
+	}
+	cfg, err := m.db.GetAntinukeCfg(gid)
+	if err == nil {
+		m.configMu.Lock()
+		m.antinukeCache[gid] = cfg
+		m.configMu.Unlock()
+	}
+	return cfg, err
+}
+
+func (m *Manager) SaveAntinukeCfg(gid string, cfg storage.AntinukeCfg) error {
+	err := m.db.SaveAntinukeCfg(gid, cfg)
+	if err == nil {
+		m.configMu.Lock()
+		m.antinukeCache[gid] = cfg
+		m.configMu.Unlock()
+	}
+	return err
+}
+
+func (m *Manager) GetAntiraidCfg(gid string) (storage.AntiraidCfg, error) {
+	m.configMu.RLock()
+	cfg, ok := m.antiraidCache[gid]
+	m.configMu.RUnlock()
+	if ok {
+		return cfg, nil
+	}
+	cfg, err := m.db.GetAntiraidCfg(gid)
+	if err == nil {
+		m.configMu.Lock()
+		m.antiraidCache[gid] = cfg
+		m.configMu.Unlock()
+	}
+	return cfg, err
+}
+
+func (m *Manager) SaveAntiraidCfg(gid string, cfg storage.AntiraidCfg) error {
+	err := m.db.SaveAntiraidCfg(gid, cfg)
+	if err == nil {
+		m.configMu.Lock()
+		m.antiraidCache[gid] = cfg
+		m.configMu.Unlock()
+	}
+	return err
+}
+

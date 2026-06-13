@@ -2,6 +2,7 @@ package moderation
 
 import (
 	"fmt"
+	"regexp"
 	"skyvern/internal/config"
 	"skyvern/internal/manager"
 	"skyvern/internal/moderation"
@@ -13,6 +14,9 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 )
+
+var rxCasesRole = regexp.MustCompile(`^<@&(\d+)>$`)
+
 
 var Warn = &manager.Command{
 	Trigger:     "warn",
@@ -224,10 +228,74 @@ var Lockdown = &manager.Command{
 	Category:    "moderation",
 	Execute: func(ctx *manager.CommandContext) error {
 		ctx.Cfg.EmbedColor = 0x808080
+		gid := ctx.GuildID()
+
+		if len(ctx.Args) > 0 {
+			sub := strings.ToLower(ctx.Args[0])
+			if sub == "ignore" {
+				if !checkPerm(ctx, discordgo.PermissionManageServer) {
+					return ctx.Reply("[!] You need Manage Server permission.")
+				}
+				if len(ctx.Args) < 2 {
+					return ctx.Reply("Usage: `.lockdown ignore [add|remove|list] [channel]`")
+				}
+				action := strings.ToLower(ctx.Args[1])
+				switch action {
+				case "list":
+					list, _ := ctx.DB.ListLockdownIgnores(gid)
+					if len(list) == 0 {
+						return ctx.Reply("[*] No channels ignored from lockdown.")
+					}
+					var sb strings.Builder
+					sb.WriteString("Ignored Channels:\n\n")
+					for _, cid := range list {
+						sb.WriteString(fmt.Sprintf("- <#%s> (`%s`)\n", cid, cid))
+					}
+					return ctx.Reply(sb.String())
+				case "add":
+					if len(ctx.Args) < 3 {
+						return ctx.Reply("Usage: `.lockdown ignore add <channel>`")
+					}
+					cid := strings.Trim(ctx.Args[2], "<#>")
+					_ = ctx.DB.SaveLockdownIgnore(gid, cid)
+					return ctx.Reply(fmt.Sprintf("[+] Channel <#%s> is now ignored from lockdowns.", cid))
+				case "remove":
+					if len(ctx.Args) < 3 {
+						return ctx.Reply("Usage: `.lockdown ignore remove <channel>`")
+					}
+					cid := strings.Trim(ctx.Args[2], "<#>")
+					_ = ctx.DB.DeleteLockdownIgnore(gid, cid)
+					return ctx.Reply(fmt.Sprintf("[+] Channel <#%s> removed from ignore list.", cid))
+				}
+				return nil
+			}
+
+			if sub == "role" {
+				if !checkPerm(ctx, discordgo.PermissionManageServer) {
+					return ctx.Reply("[!] You need Manage Server permission.")
+				}
+				if len(ctx.Args) < 2 {
+					return ctx.Reply("Usage: `.lockdown role <role>`")
+				}
+				roleArg := ctx.Args[1]
+				var rid string
+				if m := rxCasesRole.FindStringSubmatch(roleArg); len(m) > 1 {
+					rid = m[1]
+				} else {
+					rid = roleArg
+				}
+				target := ctx.ChanID()
+				err := ctx.ChannelPermissionSet(target, rid, discordgo.PermissionOverwriteTypeRole, 0, discordgo.PermissionSendMessages, "Role lockdown")
+				if err != nil {
+					return ctx.Reply(fmt.Sprintf("[!] Failed to lock role: %v", err))
+				}
+				return ctx.Reply(fmt.Sprintf("[+] Role <@&%s> has been locked down in this channel.", rid))
+			}
+		}
+
 		if !checkPerm(ctx, discordgo.PermissionManageChannels) {
 			return ctx.Reply("[!] You need Manage Channels permission.")
 		}
-		gid := ctx.GuildID()
 
 		target := ctx.ChanID()
 		lockAll := false
@@ -254,12 +322,17 @@ var Lockdown = &manager.Command{
 			if err != nil {
 				return ctx.Reply(fmt.Sprintf("[!] Failed to get channels: %v", err))
 			}
+			lockedCount := 0
 			for _, c := range chans {
 				if c.Type == discordgo.ChannelTypeGuildText {
+					if ignored, _ := ctx.DB.IsLockdownIgnore(gid, c.ID); ignored {
+						continue
+					}
 					_ = lockChan(c.ID)
+					lockedCount++
 				}
 			}
-			return ctx.Reply("[+] Locked down all text channels.")
+			return ctx.Reply(fmt.Sprintf("[+] Locked down %d text channels.", lockedCount))
 		}
 
 		if err := lockChan(target); err != nil {
@@ -306,12 +379,17 @@ var Unlock = &manager.Command{
 			if err != nil {
 				return ctx.Reply(fmt.Sprintf("[!] Failed to get channels: %v", err))
 			}
+			unlockedCount := 0
 			for _, c := range chans {
 				if c.Type == discordgo.ChannelTypeGuildText {
+					if ignored, _ := ctx.DB.IsLockdownIgnore(gid, c.ID); ignored {
+						continue
+					}
 					_ = unlockChan(c.ID)
+					unlockedCount++
 				}
 			}
-			return ctx.Reply("[+] Unlocked all text channels.")
+			return ctx.Reply(fmt.Sprintf("[+] Unlocked %d text channels.", unlockedCount))
 		}
 
 		if err := unlockChan(target); err != nil {
