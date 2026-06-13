@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
-	"skyvern/internal/ai"
 	"skyvern/internal/commands"
 	"skyvern/internal/config"
 	"skyvern/internal/manager"
@@ -47,8 +46,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-
-	ai.SyncPrompts(db)
 
 	if g, err := db.GetGlobal(); err == nil {
 		config.SetGlobal(g)

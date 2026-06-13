@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"skyvern/internal/ai"
 	"skyvern/internal/config"
 	"skyvern/internal/manager"
 	"skyvern/internal/spotify"
@@ -81,19 +80,16 @@ type Model struct {
 	height   int
 	bots     []config.BotInst
 	selIdx   int
-	aiProvs     []storage.AIProvider
-	aiSelIdx    int
-	aiPrompts   []storage.AIPrompt
-	aiPromptIdx int
-	aiSubTab    int // 0 = Providers, 1 = Prompts
-	editing     bool
-	inputs      []textinput.Model
-	focus       int
-	tab         int
-	ticks       int
-	spTrack     string
-	spProg      int
-	spTot       int
+	aiProvs  []storage.AIProvider
+	aiSelIdx int
+	editing  bool
+	inputs   []textinput.Model
+	focus    int
+	tab      int
+	ticks    int
+	spTrack  string
+	spProg   int
+	spTot    int
 }
 
 func NewModel(db *storage.DB, mgr *manager.Manager) Model {
@@ -102,11 +98,10 @@ func NewModel(db *storage.DB, mgr *manager.Manager) Model {
 		curTheme = g.TuiTheme
 	}
 	m := Model{
-		db:        db,
-		mgr:       mgr,
-		bots:      []config.BotInst{},
-		aiProvs:   []storage.AIProvider{},
-		aiPrompts: []storage.AIPrompt{},
+		db:      db,
+		mgr:     mgr,
+		bots:    []config.BotInst{},
+		aiProvs: []storage.AIProvider{},
 	}
 	m.reload()
 	return m
@@ -129,15 +124,6 @@ func (m *Model) reload() {
 		}
 		if m.aiSelIdx < 0 {
 			m.aiSelIdx = 0
-		}
-	}
-	if prompts, err := m.db.ListAIPrompts(); err == nil {
-		m.aiPrompts = prompts
-		if m.aiPromptIdx >= len(m.aiPrompts) {
-			m.aiPromptIdx = len(m.aiPrompts) - 1
-		}
-		if m.aiPromptIdx < 0 {
-			m.aiPromptIdx = 0
 		}
 	}
 }
@@ -175,7 +161,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else if m.tab == 2 {
 						m.savePalantirSettings()
 					} else if m.tab == 4 {
-						if len(m.inputs) > 0 && m.inputs[0].Placeholder == "Prompt ID/Name" {
+						if len(m.inputs) > 0 && m.inputs[0].Placeholder == "Default System Prompt" {
 							m.savePromptSettings()
 						} else {
 							m.saveAISettings()
@@ -192,7 +178,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "down", "tab":
 				m.focusInput(m.focus + 1)
 			case "left", "right":
-				if m.tab == 4 && (m.focus == 1 || m.focus == 5) && len(m.inputs) > 5 && m.inputs[0].Placeholder != "Prompt ID/Name" {
+				if m.tab == 4 && (m.focus == 1 || m.focus == 5) && len(m.inputs) > 5 && m.inputs[0].Placeholder != "Default System Prompt" {
 					isRight := msg.String() == "right"
 					if m.focus == 1 {
 						curVal := m.inputs[1].Value()
@@ -232,14 +218,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tab = (m.tab + 1) % 5
 		case "up", "k", "left", "h":
 			if m.tab == 4 {
-				if m.aiSubTab == 0 {
-					if m.aiSelIdx > 0 {
-						m.aiSelIdx--
-					}
-				} else {
-					if m.aiPromptIdx > 0 {
-						m.aiPromptIdx--
-					}
+				if m.aiSelIdx > 0 {
+					m.aiSelIdx--
 				}
 			} else {
 				if m.selIdx > 0 {
@@ -248,14 +228,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "down", "j", "right", "l":
 			if m.tab == 4 {
-				if m.aiSubTab == 0 {
-					if m.aiSelIdx < len(m.aiProvs)-1 {
-						m.aiSelIdx++
-					}
-				} else {
-					if m.aiPromptIdx < len(m.aiPrompts)-1 {
-						m.aiPromptIdx++
-					}
+				if m.aiSelIdx < len(m.aiProvs)-1 {
+					m.aiSelIdx++
 				}
 			} else {
 				if m.selIdx < len(m.bots)-1 {
@@ -274,11 +248,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.initInputs(nil)
 			} else if m.tab == 4 {
 				m.editing = true
-				if m.aiSubTab == 0 {
-					m.initAIInputs(nil)
-				} else {
-					m.initPromptInputs(nil)
-				}
+				m.initAIInputs(nil)
 			}
 		case "e":
 			if m.tab == 1 {
@@ -288,15 +258,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.editing = true
 				m.initPalantirInputs()
 			} else if m.tab == 4 {
-				m.editing = true
-				if m.aiSubTab == 0 {
-					if len(m.aiProvs) > 0 {
-						m.initAIInputs(&m.aiProvs[m.aiSelIdx])
-					}
-				} else {
-					if len(m.aiPrompts) > 0 {
-						m.initPromptInputs(&m.aiPrompts[m.aiPromptIdx])
-					}
+				if len(m.aiProvs) > 0 {
+					m.editing = true
+					m.initAIInputs(&m.aiProvs[m.aiSelIdx])
 				}
 			} else if len(m.bots) > 0 {
 				m.editing = true
@@ -307,7 +271,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "p":
 			if m.tab == 4 {
-				m.aiSubTab = (m.aiSubTab + 1) % 2
+				m.editing = true
+				m.initPromptInputs()
 			}
 		case "s":
 			if m.tab == 0 && len(m.bots) > 0 {
@@ -329,22 +294,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = m.mgr.Stop(b.ClientID)
 				_ = m.db.DeleteBot(b.ClientID)
 				m.reload()
-			} else if m.tab == 4 {
-				if m.aiSubTab == 0 && len(m.aiProvs) > 0 {
-					_ = m.db.DeleteAIProvider(m.aiProvs[m.aiSelIdx].ID)
-					m.reload()
-				} else if m.aiSubTab == 1 && len(m.aiPrompts) > 0 {
-					pName := m.aiPrompts[m.aiPromptIdx].Name
-					_ = m.db.DeleteAIPrompt(pName)
-					if prompts, err := m.db.ListAIPrompts(); err == nil {
-						pm := make(map[string]storage.AIPrompt)
-						for _, pr := range prompts {
-							pm[pr.Name] = pr
-						}
-						_ = ai.SavePrompts(pm)
-					}
-					m.reload()
-				}
+			} else if m.tab == 4 && len(m.aiProvs) > 0 {
+				_ = m.db.DeleteAIProvider(m.aiProvs[m.aiSelIdx].ID)
+				m.reload()
 			}
 		}
 
@@ -447,7 +399,7 @@ func (m Model) View() string {
 	} else if m.tab == 3 {
 		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] AI Configuration   [T] Cycle Themes   [Q] Quit")
 	} else {
-		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [↑/↓] Navigate   [p] Toggle Box   [N] New   [E] Edit   [X] Delete   [Tab] Dashboard   [Q] Quit")
+		footer = lipgloss.NewStyle().Foreground(th.Subtle).Render("  [Tab] Dashboard   [N] New Provider   [E] Edit   [X] Delete   [P] Edit Prompt   [Q] Quit")
 	}
 
 	var body string

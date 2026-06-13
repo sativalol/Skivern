@@ -11,121 +11,39 @@ import (
 
 func (m Model) renderAISidebar(contentHeight, sidebarWidth int, th Theme) string {
 	titleStyle := lipgloss.NewStyle().Foreground(th.Accent).Bold(true).Underline(true)
-	titleFocusStyle := lipgloss.NewStyle().Foreground(th.BorderFocus).Bold(true).Underline(true)
 	boxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(th.Border).Padding(1)
 
 	sbInnerWidth, sbInnerHeight := calcInnerLimits(sidebarWidth, contentHeight)
 
 	var sbLines []string
-	if miniLogo != "" && sbInnerHeight > 18 {
+	if miniLogo != "" && sbInnerHeight > 15 {
 		sbLines = append(sbLines, lipgloss.NewStyle().Foreground(th.BorderFocus).Render(miniLogo))
 		sbLines = append(sbLines, "")
 	}
-
-	remainingHeight := sbInnerHeight - len(sbLines) - 4
-	if remainingHeight < 4 {
-		remainingHeight = 4
-	}
-	provVisible := remainingHeight / 2
-	promptVisible := remainingHeight - provVisible
-
-	if m.aiSubTab == 0 {
-		sbLines = append(sbLines, titleFocusStyle.Render("► AI PROVIDERS"))
-	} else {
-		sbLines = append(sbLines, titleStyle.Render("  AI PROVIDERS"))
-	}
+	sbLines = append(sbLines, titleStyle.Render("AI PROVIDERS"))
 	sbLines = append(sbLines, "")
 
-	pStart, pEnd := calcVisibleRange(len(m.aiProvs), m.aiSelIdx, provVisible)
-	for i := pStart; i < pEnd; i++ {
+	maxVisible := calcMaxVisible(sbInnerHeight)
+	startIdx, endIdx := calcVisibleRange(len(m.aiProvs), m.aiSelIdx, maxVisible)
+	for i := startIdx; i < endIdx; i++ {
 		p := m.aiProvs[i]
 		lbl := p.ID
 		line := fmt.Sprintf("  %-15s", lbl)
-		if m.aiSubTab == 0 && i == m.aiSelIdx {
+		if i == m.aiSelIdx {
 			sbLines = append(sbLines, lipgloss.NewStyle().Foreground(th.Accent).Background(th.BorderFocus).Render(" "+line))
 		} else {
 			sbLines = append(sbLines, " "+line)
 		}
 	}
-
-	sbLines = append(sbLines, "")
-
-	if m.aiSubTab == 1 {
-		sbLines = append(sbLines, titleFocusStyle.Render("► AI PROMPTS"))
-	} else {
-		sbLines = append(sbLines, titleStyle.Render("  AI PROMPTS"))
-	}
-	sbLines = append(sbLines, "")
-
-	prStart, prEnd := calcVisibleRange(len(m.aiPrompts), m.aiPromptIdx, promptVisible)
-	for i := prStart; i < prEnd; i++ {
-		p := m.aiPrompts[i]
-		lbl := p.Name
-		line := fmt.Sprintf("  %-15s", lbl)
-		if m.aiSubTab == 1 && i == m.aiPromptIdx {
-			sbLines = append(sbLines, lipgloss.NewStyle().Foreground(th.Accent).Background(th.BorderFocus).Render(" "+line))
-		} else {
-			sbLines = append(sbLines, " "+line)
-		}
-	}
-
 	return boxStyle.Width(sbInnerWidth).Height(sbInnerHeight).Render(strings.Join(sbLines, "\n"))
 }
 
 func (m Model) renderAIPanel(mainWidth, contentHeight int, th Theme) string {
 	titleStyle := lipgloss.NewStyle().Foreground(th.Accent).Bold(true).Underline(true)
 	boxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(th.Border).Padding(1)
-	mainInnerWidth := calcMainInnerWidth(mainWidth)
-
-	if m.aiSubTab == 1 {
-		var lines []string
-		lines = append(lines, titleStyle.Render("AI PROMPT CONFIGURATION"))
-		lines = append(lines, "")
-
-		if len(m.aiPrompts) == 0 {
-			lines = append(lines, "  No custom prompts configured.", "", "  Press [N] to add a new system prompt.")
-		} else {
-			p := m.aiPrompts[m.aiPromptIdx]
-			lines = append(lines, fmt.Sprintf("  Prompt ID/Name:   %s", p.Name))
-			lines = append(lines, fmt.Sprintf("  Temperature:      %.2f", p.Temperature))
-			lines = append(lines, fmt.Sprintf("  Max Tokens Limit: %d", p.MaxTokens))
-			lines = append(lines, "")
-			lines = append(lines, "  System Message:")
-			
-			sysLines := strings.Split(p.SystemMsg, "\n")
-			for i, sl := range sysLines {
-				if i > 5 {
-					lines = append(lines, "    ...")
-					break
-				}
-				if len(sl) > 55 {
-					sl = sl[:52] + "..."
-				}
-				lines = append(lines, "    "+sl)
-			}
-			
-			if p.UserTemplate != "" {
-				lines = append(lines, "", "  User Template:")
-				utLines := strings.Split(p.UserTemplate, "\n")
-				for i, ul := range utLines {
-					if i > 3 {
-						lines = append(lines, "    ...")
-						break
-					}
-					if len(ul) > 55 {
-						ul = ul[:52] + "..."
-					}
-					lines = append(lines, "    "+ul)
-				}
-			}
-		}
-		
-		lines = append(lines, "", "  [N] Add Prompt | [E] Edit | [X] Delete | [p] Toggle Box")
-		return boxStyle.Width(mainInnerWidth).Render(strings.Join(lines, "\n"))
-	}
 
 	var aiLines []string
-	aiLines = append(aiLines, titleStyle.Render("AI PROVIDER CONFIGURATION"))
+	aiLines = append(aiLines, titleStyle.Render("AI CONFIGURATION"))
 	aiLines = append(aiLines, "")
 
 	if len(m.aiProvs) == 0 {
@@ -175,9 +93,10 @@ func (m Model) renderAIPanel(mainWidth, contentHeight int, th Theme) string {
 		aiLines = append(aiLines, fmt.Sprintf("  Max Requests Limit: %s", maxRStr))
 		aiLines = append(aiLines, fmt.Sprintf("  Total Requests:    %d", p.UsedRequests))
 
-		aiLines = append(aiLines, "", "  [N] Add Provider | [E] Edit | [X] Delete | [p] Toggle Box")
+		aiLines = append(aiLines, "", "  [N] Add Provider | [E] Edit | [X] Delete | [P] Edit Default Prompt")
 	}
 
+	mainInnerWidth := calcMainInnerWidth(mainWidth)
 	return boxStyle.Width(mainInnerWidth).Render(strings.Join(aiLines, "\n"))
 }
 

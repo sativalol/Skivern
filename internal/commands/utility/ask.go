@@ -5,6 +5,7 @@ import (
 	"skyvern/internal/ai"
 	"skyvern/internal/manager"
 	"strings"
+	"time"
 )
 
 func init() {
@@ -33,38 +34,24 @@ var AskCmd = &manager.Command{
 			return ctx.Reply("[!] No AI providers configured. Please set one up in the TUI Settings first.")
 		}
 
-		var sysMsg string
 		prompt := strings.Join(ctx.Args, " ")
-		temp := 0.7
-		maxT := 1000
 
-		pName := "default"
-		if len(ctx.Args) >= 3 && strings.ToLower(ctx.Args[0]) == "-prompt" {
-			pName = strings.ToLower(ctx.Args[1])
-			prompt = strings.Join(ctx.Args[2:], " ")
-		}
+		pCfg, err := ai.LoadPrompts()
+		sysMsg := pCfg.SystemPrompt
 
-		if p, err := ctx.DB.GetAIPrompt(pName); err == nil {
-			sysMsg = p.SystemMsg
-			if p.Temperature > 0 {
-				temp = p.Temperature
-			}
-			if p.MaxTokens > 0 {
-				maxT = p.MaxTokens
-			}
-		} else if pName == "default" {
-			sysMsg = "You are a helpful AI assistant."
-		} else {
-			return ctx.Reply(fmt.Sprintf("[!] Prompt `%s` not found.", pName))
-		}
+		// Resolve template placeholders
+		sysMsg = strings.ReplaceAll(sysMsg, "${currentDate}", time.Now().Format("Monday, January 2, 2006 3:04 PM MST"))
+		sysMsg = strings.ReplaceAll(sysMsg, "${userRecognition}", fmt.Sprintf("User: %s (ID: %s)", ctx.AuthorTag(), ctx.AuthorID()))
+		sysMsg = strings.ReplaceAll(sysMsg, "${channelContext}", fmt.Sprintf("Channel: <#%s>", ctx.ChanID()))
+		sysMsg = strings.ReplaceAll(sysMsg, "${searchInstructions}", "")
 
 		_ = ctx.Reply("[*] Thinking, please wait...")
 
 		res, err := ai.Generate(ctx.DB, provs[0].ID, ai.GenOpts{
 			UserMsg:     prompt,
 			SystemMsg:   sysMsg,
-			Temperature: temp,
-			MaxTokens:   maxT,
+			Temperature: 0.7,
+			MaxTokens:   1200,
 		})
 
 		if err != nil {
