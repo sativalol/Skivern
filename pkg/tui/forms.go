@@ -336,10 +336,25 @@ func (m *Model) saveEdit() {
 	m.reload()
 }
 
-func (m *Model) initPromptInputs() {
-	pCfg, _ := ai.LoadPrompts()
+func (m *Model) initPromptInputs(p *storage.AIPrompt) {
+	var name, sysMsg, userTemp, tempStr, maxTokensStr string
+	tempStr = "0.7"
+	maxTokensStr = "1000"
+
+	if p != nil {
+		name = p.Name
+		sysMsg = p.SystemMsg
+		userTemp = p.UserTemplate
+		tempStr = fmt.Sprintf("%.2f", p.Temperature)
+		maxTokensStr = fmt.Sprintf("%d", p.MaxTokens)
+	}
+
 	fields := []formField{
-		{"Default System Prompt", pCfg.SystemPrompt, false},
+		{"Prompt ID/Name", name, false},
+		{"System Message", sysMsg, false},
+		{"User Template", userTemp, false},
+		{"Temperature", tempStr, false},
+		{"Max Tokens Limit", maxTokensStr, false},
 	}
 	th := Themes[curTheme]
 	m.inputs, m.focus = createFormInputs(fields, th.Accent, false, "")
@@ -347,8 +362,43 @@ func (m *Model) initPromptInputs() {
 }
 
 func (m *Model) savePromptSettings() {
-	val := m.inputs[0].Value()
-	_ = ai.SavePrompts(ai.PromptsConfig{SystemPrompt: val})
+	name := strings.TrimSpace(m.inputs[0].Value())
+	if name == "" {
+		return
+	}
+	sysMsg := m.inputs[1].Value()
+	userTemp := m.inputs[2].Value()
+	temp, _ := strconv.ParseFloat(strings.TrimSpace(m.inputs[3].Value()), 64)
+	maxT, _ := strconv.Atoi(strings.TrimSpace(m.inputs[4].Value()))
+
+	if len(m.aiPrompts) > 0 && m.aiPromptIdx < len(m.aiPrompts) && m.inputs[0].Placeholder == "Prompt ID/Name" {
+		// If editing (not creating new), check if name changed to rename
+		oldP := m.aiPrompts[m.aiPromptIdx]
+		if oldP.Name != name {
+			_ = m.db.DeleteAIPrompt(oldP.Name)
+		}
+	}
+
+	p := storage.AIPrompt{
+		Name:         name,
+		SystemMsg:    sysMsg,
+		UserTemplate: userTemp,
+		Temperature:  temp,
+		MaxTokens:    maxT,
+	}
+
+	_ = m.db.SaveAIPrompt(p)
+
+	if prompts, err := m.db.ListAIPrompts(); err == nil {
+		pm := make(map[string]storage.AIPrompt)
+		for _, pr := range prompts {
+			pm[pr.Name] = pr
+		}
+		_ = ai.SavePrompts(pm)
+	}
+
+	m.reload()
 }
+
 
 

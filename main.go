@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"skyvern/internal/ai"
 	"skyvern/internal/commands"
 	"skyvern/internal/config"
 	"skyvern/internal/manager"
@@ -47,9 +48,12 @@ func main() {
 	}
 	defer db.Close()
 
+	ai.SyncPrompts(db)
+
 	if g, err := db.GetGlobal(); err == nil {
 		config.SetGlobal(g)
 	}
+
 
 	g := config.GetGlobal()
 	isLocal := g.LavalinkHost == "" || strings.Contains(g.LavalinkHost, "localhost") || strings.Contains(g.LavalinkHost, "127.0.0.1")

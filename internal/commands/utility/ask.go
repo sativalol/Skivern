@@ -35,18 +35,38 @@ var AskCmd = &manager.Command{
 
 		var sysMsg string
 		prompt := strings.Join(ctx.Args, " ")
+		temp := 0.7
+		maxT := 1000
 
-		pCfg, err := ai.LoadPrompts()
-		if err == nil {
-			sysMsg = pCfg.SystemPrompt
+		pName := "default"
+		if len(ctx.Args) >= 3 && strings.ToLower(ctx.Args[0]) == "-prompt" {
+			pName = strings.ToLower(ctx.Args[1])
+			prompt = strings.Join(ctx.Args[2:], " ")
+		}
+
+		if p, err := ctx.DB.GetAIPrompt(pName); err == nil {
+			sysMsg = p.SystemMsg
+			if p.Temperature > 0 {
+				temp = p.Temperature
+			}
+			if p.MaxTokens > 0 {
+				maxT = p.MaxTokens
+			}
+		} else if pName == "default" {
+			sysMsg = "You are a helpful AI assistant."
+		} else {
+			return ctx.Reply(fmt.Sprintf("[!] Prompt `%s` not found.", pName))
 		}
 
 		_ = ctx.Reply("[*] Thinking, please wait...")
 
 		res, err := ai.Generate(ctx.DB, provs[0].ID, ai.GenOpts{
-			UserMsg:   prompt,
-			SystemMsg: sysMsg,
+			UserMsg:     prompt,
+			SystemMsg:   sysMsg,
+			Temperature: temp,
+			MaxTokens:   maxT,
 		})
+
 		if err != nil {
 			return ctx.Reply(fmt.Sprintf("[!] failed: %v", err))
 		}
